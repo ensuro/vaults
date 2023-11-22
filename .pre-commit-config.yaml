@@ -26,4 +26,9 @@ repos:
     rev: "v8.45.0"
     hooks:
       - id: eslint
+
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v3.0.2
+    hooks:
+      - id: prettier
 # TODO: add solhint
