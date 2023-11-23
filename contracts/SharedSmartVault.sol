@@ -3,8 +3,10 @@ pragma solidity 0.8.16;
 
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {ERC4626Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
+import {ICallable} from "./interfaces/ICallable.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
+import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
@@ -21,15 +23,13 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
   bytes32 public constant GUARDIAN_ROLE = keccak256("GUARDIAN_ROLE");
 
   address internal immutable _smartVault;
-  address internal _collector;
-  address internal _withdrawer;
+  ICallable internal _collector;
+  ICallable internal _withdrawer;
+  IERC4626[] internal _investments;
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(address smartVault_) {
-    require(
-      address(smartVault_) != address(0),
-      "SharedSmartVault: smartVault_ cannot be zero address"
-    );
+    require(smartVault_ != address(0), "SharedSmartVault: smartVault_ cannot be zero address");
     _disableInitializers();
     _smartVault = smartVault_;
   }
@@ -38,17 +38,19 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
    * @dev Initializes the SharedSmartVault
    */
   function initialize(
-    address collector_,
-    address withdrawer_,
+    ICallable collector_,
+    ICallable withdrawer_,
+    IERC4626[] calldata investments_,
     IERC20Upgradeable asset_
   ) public virtual initializer {
-    __SharedSmartVault_init(collector_, withdrawer_, asset_);
+    __SharedSmartVault_init(collector_, withdrawer_, investments_, asset_);
   }
 
   // solhint-disable-next-line func-name-mixedcase
   function __SharedSmartVault_init(
-    address collector_,
-    address withdrawer_,
+    ICallable collector_,
+    ICallable withdrawer_,
+    IERC4626[] calldata investments_,
     IERC20Upgradeable asset_
   ) internal onlyInitializing {
     __UUPSUpgradeable_init();
@@ -62,13 +64,14 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
       "SharedSmartVault: withdrawer_ cannot be zero address"
     );
     __ERC4626_init(asset_);
-    __SharedSmartVault_init_unchained(collector_, withdrawer_);
+    __SharedSmartVault_init_unchained(collector_, withdrawer_, investments_);
   }
 
   // solhint-disable-next-line func-name-mixedcase
   function __SharedSmartVault_init_unchained(
-    address collector_,
-    address withdrawer_
+    ICallable collector_,
+    ICallable withdrawer_,
+    IERC4626[] calldata investments_
   ) internal onlyInitializing {
     require(
       address(collector_) != address(0),
@@ -82,7 +85,9 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
 
     _collector = collector_;
     _withdrawer = withdrawer_;
-    // TODO: Infinite approval
+    _investments = investments_;
+    // Infinite approval to the SmartVault
+    IERC20Metadata(asset()).approve(_smartVault, type(uint256).max);
   }
 
   // solhint-disable-next-line no-empty-blocks
