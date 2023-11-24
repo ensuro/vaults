@@ -103,6 +103,43 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
   // solhint-disable-next-line no-empty-blocks
   function _authorizeUpgrade(address newImpl) internal view override onlyRole(GUARDIAN_ROLE) {}
 
+  function _balance() internal view returns (uint256) {
+    return IERC20Metadata(asset()).balanceOf(address(this));
+  }
+
+  function _deposit(
+    address caller,
+    address receiver,
+    uint256 assets,
+    uint256 shares
+  ) internal virtual override {
+    super._deposit(caller, receiver, assets, shares);
+    _collector.call(asset(), assets);
+    require(
+      _balance() == 0,
+      "SharedSmartVault: balance of the shared smart vault should be 0 after deposit"
+    );
+  }
+
+  function _withdraw(
+    address caller,
+    address receiver,
+    address owner,
+    uint256 assets,
+    uint256 shares
+  ) internal virtual override {
+    _withdrawer.call(asset(), assets);
+    super._withdraw(caller, receiver, owner, assets, shares);
+  }
+
+  function totalAssets() public view virtual override returns (uint256) {
+    uint256 assets = IERC20Metadata(asset()).balanceOf(_smartVault);
+    for (uint256 i = 0; i < _investments.length; i++) {
+      assets += _investments[i].convertToAssets(_investments[i].balanceOf(_smartVault));
+    }
+    return assets;
+  }
+
   function getInvestmentIndex(IERC4626 investment_) internal virtual returns (uint) {
     for (uint i = 0; i < _investments.length; i++) {
       if (_investments[i] == investment_) {
