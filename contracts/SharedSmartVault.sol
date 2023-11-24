@@ -21,11 +21,16 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
 
   bytes32 public constant LP_ROLE = keccak256("LP_ROLE");
   bytes32 public constant GUARDIAN_ROLE = keccak256("GUARDIAN_ROLE");
+  bytes32 public constant ADD_INVESTMENT_ROLE = keccak256("ADD_INVESTMENT_ROLE");
+  bytes32 public constant REMOVE_INVESTMENT_ROLE = keccak256("REMOVE_INVESTMENT_ROLE");
 
   address internal immutable _smartVault;
   ICallable internal _collector;
   ICallable internal _withdrawer;
   IERC4626[] internal _investments;
+
+  event InvestmentAdded(IERC4626 investment);
+  event InvestmentRemoved(IERC4626 investment);
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(address smartVault_) {
@@ -97,6 +102,43 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
 
   // solhint-disable-next-line no-empty-blocks
   function _authorizeUpgrade(address newImpl) internal view override onlyRole(GUARDIAN_ROLE) {}
+
+  function getInvestmentIndex(IERC4626 investment_) internal virtual returns (uint) {
+    for (uint i = 0; i < _investments.length; i++) {
+      if (_investments[i] == investment_) {
+        return i;
+      }
+    }
+    return type(uint).max;
+  }
+
+  function addInvestment(IERC4626 investment_) external onlyRole(ADD_INVESTMENT_ROLE) {
+    require(
+      address(investment_) != address(0),
+      "SharedSmartVault: investment_ cannot be zero address."
+    );
+    require(
+      getInvestmentIndex(investment_) == type(uint).max,
+      "SharedSmartVault: investment_ already exists."
+    );
+    _investments.push(investment_);
+    emit InvestmentAdded(investment_);
+  }
+
+  function removeInvestment(IERC4626 investment_) external onlyRole(REMOVE_INVESTMENT_ROLE) {
+    require(
+      address(investment_) != address(0),
+      "SharedSmartVault: investment_ cannot be zero address."
+    );
+    require(
+      investment_.balanceOf(_smartVault) == 0,
+      "SharedSmartVault: cannot remove an investment_ with funds."
+    );
+    uint256 index = getInvestmentIndex(investment_);
+    require(index != type(uint).max, "SharedSmartVault: investment_ not found.");
+    delete _investments[index];
+    emit InvestmentRemoved(investment_);
+  }
 
   /**
    * @dev This empty reserved space is put in place to allow future versions to add new
