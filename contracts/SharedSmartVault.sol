@@ -38,16 +38,20 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
    * @dev Initializes the SharedSmartVault
    */
   function initialize(
+    string memory name_,
+    string memory symbol_,
     ICallable collector_,
     ICallable withdrawer_,
     IERC4626[] calldata investments_,
     IERC20Upgradeable asset_
   ) public virtual initializer {
-    __SharedSmartVault_init(collector_, withdrawer_, investments_, asset_);
+    __SharedSmartVault_init(name_, symbol_, collector_, withdrawer_, investments_, asset_);
   }
 
   // solhint-disable-next-line func-name-mixedcase
   function __SharedSmartVault_init(
+    string memory name_,
+    string memory symbol_,
     ICallable collector_,
     ICallable withdrawer_,
     IERC4626[] calldata investments_,
@@ -64,6 +68,7 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
       "SharedSmartVault: withdrawer_ cannot be zero address"
     );
     __ERC4626_init(asset_);
+    __ERC20_init(name_, symbol_);
     __SharedSmartVault_init_unchained(collector_, withdrawer_, investments_);
   }
 
