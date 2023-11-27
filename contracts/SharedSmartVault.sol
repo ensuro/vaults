@@ -107,6 +107,16 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
     return IERC20Metadata(asset()).balanceOf(address(this));
   }
 
+  /**
+   * @dev See {IERC4626-deposit}.
+   */
+  function deposit(
+    uint256 assets,
+    address receiver
+  ) public virtual override onlyRole(LP_ROLE) returns (uint256) {
+    return super.deposit(assets, receiver);
+  }
+
   function _deposit(
     address caller,
     address receiver,
