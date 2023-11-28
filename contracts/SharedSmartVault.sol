@@ -127,12 +127,10 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
     uint256 assets,
     uint256 shares
   ) internal virtual override {
+    uint256 prevBalance = _balance();
     super._deposit(caller, receiver, assets, shares);
     _collector.call(asset(), assets);
-    require(
-      _balance() == 0,
-      "SharedSmartVault: balance of the shared smart vault should be 0 after deposit"
-    );
+    require(_balance() == prevBalance, "SharedSmartVault: the balance should be the same.");
   }
 
   function maxDeposit(address owner) public view virtual override returns (uint256) {
