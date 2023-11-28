@@ -157,10 +157,12 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
 
   function maxWithdraw(address owner) public view virtual override returns (uint256) {
     uint256 max = 0;
+    uint256 userAssets = super.maxWithdraw(owner);
     for (uint256 i = 0; i < _investments.length; i++) {
       max += _investments[i].maxWithdraw(owner);
+      if (userAssets <= max) return userAssets;
     }
-    return Math.min(super.maxWithdraw(owner), max);
+    return max;
   }
 
   function totalAssets() public view virtual override returns (uint256) {
