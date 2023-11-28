@@ -135,6 +135,15 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
     );
   }
 
+  function maxDeposit(address owner) public view virtual override returns (uint256) {
+    uint256 max = 0;
+    for (uint256 i = 0; i < _investments.length; i++) {
+      max += _investments[i].maxDeposit(owner);
+      if (max == type(uint256).max) return max;
+    }
+    return max;
+  }
+
   function _withdraw(
     address caller,
     address receiver,
@@ -144,6 +153,14 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
   ) internal virtual override {
     _withdrawer.call(asset(), assets);
     super._withdraw(caller, receiver, owner, assets, shares);
+  }
+
+  function maxWithdraw(address owner) public view virtual override returns (uint256) {
+    uint256 max = 0;
+    for (uint256 i = 0; i < _investments.length; i++) {
+      max += _investments[i].maxWithdraw(owner);
+    }
+    return Math.min(super.maxWithdraw(owner), max);
   }
 
   function totalAssets() public view virtual override returns (uint256) {
