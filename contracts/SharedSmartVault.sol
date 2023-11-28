@@ -9,6 +9,7 @@ import {IERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 /**
  * @title SharedSmartVault
@@ -91,11 +92,14 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
       address(withdrawer_) != address(0),
       "SharedSmartVault: withdrawer_ cannot be zero address"
     );
+    require(investments_.length != 0, "SharedSmartVault: investments_ cannot be empty.");
     _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
 
     _collector = collector_;
     _withdrawer = withdrawer_;
-    _investments = investments_;
+    for (uint256 i = 0; i < investments_.length; i++) {
+      this.addInvestment(investments_[i]);
+    }
     // Infinite approval to the SmartVault
     IERC20Metadata(asset()).approve(_smartVault, type(uint256).max);
   }
@@ -181,6 +185,7 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
       investment_.balanceOf(_smartVault) == 0,
       "SharedSmartVault: cannot remove an investment_ with funds."
     );
+    require(_investments.length != 1, "SharedSmartVault: cannot remove all the _investments.");
     uint256 index = getInvestmentIndex(investment_);
     require(index != type(uint).max, "SharedSmartVault: investment_ not found.");
     delete _investments[index];
