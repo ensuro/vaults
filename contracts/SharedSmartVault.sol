@@ -133,15 +133,6 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
     require(_balance() == prevBalance, "SharedSmartVault: the balance should be the same.");
   }
 
-  function maxDeposit(address owner) public view virtual override returns (uint256) {
-    uint256 max = 0;
-    for (uint256 i = 0; i < _investments.length; i++) {
-      max += _investments[i].maxDeposit(owner);
-      if (max == type(uint256).max) return max;
-    }
-    return max;
-  }
-
   function _withdraw(
     address caller,
     address receiver,
