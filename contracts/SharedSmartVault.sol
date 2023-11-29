@@ -9,7 +9,7 @@ import {IERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {MathUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/math/MathUpgradeable.sol";
 
 /**
  * @title SharedSmartVault
@@ -98,7 +98,7 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
     _collector = collector_;
     _withdrawer = withdrawer_;
     for (uint256 i = 0; i < investments_.length; i++) {
-      this.addInvestment(investments_[i]);
+      _addInvestment(investments_[i]);
     }
     // Infinite approval to the SmartVault
     IERC20Metadata(asset()).approve(_smartVault, type(uint256).max);
@@ -154,34 +154,48 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
     return max;
   }
 
-  function totalAssets() public view virtual override returns (uint256) {
-    uint256 assets = IERC20Metadata(asset()).balanceOf(_smartVault);
+  function maxRedeem(address owner) public view virtual override returns (uint256) {
+    uint256 maxW = maxWithdraw(owner);
+    if (maxW == super.maxWithdraw(owner)) return super.maxRedeem(owner);
+    return _convertToShares(maxW, MathUpgradeable.Rounding.Down);
+  }
+
+  function totalAssets() public view virtual override returns (uint256 assets) {
+    assets = IERC20Metadata(asset()).balanceOf(_smartVault);
     for (uint256 i = 0; i < _investments.length; i++) {
       assets += _investments[i].convertToAssets(_investments[i].balanceOf(_smartVault));
     }
     return assets;
   }
 
-  function getInvestmentIndex(IERC4626 investment_) internal virtual returns (uint) {
-    for (uint i = 0; i < _investments.length; i++) {
+  function getInvestmentIndex(IERC4626 investment_) internal virtual returns (uint256) {
+    for (uint256 i = 0; i < _investments.length; i++) {
       if (_investments[i] == investment_) {
         return i;
       }
     }
-    return type(uint).max;
+    return type(uint256).max;
   }
 
-  function addInvestment(IERC4626 investment_) external onlyRole(ADD_INVESTMENT_ROLE) {
+  function _addInvestment(IERC4626 investment_) internal {
     require(
       address(investment_) != address(0),
       "SharedSmartVault: investment_ cannot be zero address."
     );
     require(
-      getInvestmentIndex(investment_) == type(uint).max,
+      getInvestmentIndex(investment_) == type(uint256).max,
       "SharedSmartVault: investment_ already exists."
+    );
+    require(
+      investment_.asset() == asset(),
+      "SharedSmartVault: the investment_ asset has to be the same as the vault asset."
     );
     _investments.push(investment_);
     emit InvestmentAdded(investment_);
+  }
+
+  function addInvestment(IERC4626 investment_) external onlyRole(ADD_INVESTMENT_ROLE) {
+    _addInvestment(investment_);
   }
 
   function removeInvestment(IERC4626 investment_) external onlyRole(REMOVE_INVESTMENT_ROLE) {
