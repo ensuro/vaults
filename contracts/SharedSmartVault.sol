@@ -209,8 +209,11 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
     );
     require(_investments.length != 1, "SharedSmartVault: cannot remove all the _investments.");
     uint256 index = getInvestmentIndex(investment_);
-    require(index != type(uint).max, "SharedSmartVault: investment_ not found.");
-    delete _investments[index];
+    require(index != type(uint256).max, "SharedSmartVault: investment_ not found.");
+    for (uint256 i = index; i < _investments.length - 1; i++) {
+      _investments[i] = _investments[i + 1];
+    }
+    _investments.pop();
     emit InvestmentRemoved(investment_);
   }
 
