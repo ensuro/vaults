@@ -33,9 +33,18 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
   event InvestmentAdded(IERC4626 investment);
   event InvestmentRemoved(IERC4626 investment);
 
+  error InvalidAddress(address _address, string _message);
+  error NotFound(address investment, string message);
+  error InvestmentAlreadyExists(address investment, string message);
+  error DifferentAsset(address investmentAsset, address asset, string message);
+  error InvestmentWithFunds(address investment, uint256 balance, string message);
+  error EmptyInvestments(uint256 length, string message);
+  error DifferentBalance(uint256 currentBalance, uint256 prevBalance, string message);
+
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(address smartVault_) {
-    require(smartVault_ != address(0), "SharedSmartVault: smartVault_ cannot be zero address");
+    if (smartVault_ == address(0))
+      revert InvalidAddress(smartVault_, "smartVault_ cannot be zero address.");
     _disableInitializers();
     _smartVault = smartVault_;
   }
@@ -65,14 +74,8 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
   ) internal onlyInitializing {
     __UUPSUpgradeable_init();
     __AccessControl_init();
-    require(
-      address(collector_) != address(0),
-      "SharedSmartVault: collector_ cannot be zero address"
-    );
-    require(
-      address(withdrawer_) != address(0),
-      "SharedSmartVault: withdrawer_ cannot be zero address"
-    );
+    if (address(asset_) == address(0))
+      revert InvalidAddress(address(asset_), "asset_ cannot be zero address.");
     __ERC4626_init(asset_);
     __ERC20_init(name_, symbol_);
     __SharedSmartVault_init_unchained(collector_, withdrawer_, investments_);
@@ -84,15 +87,12 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
     ICallable withdrawer_,
     IERC4626[] calldata investments_
   ) internal onlyInitializing {
-    require(
-      address(collector_) != address(0),
-      "SharedSmartVault: collector_ cannot be zero address"
-    );
-    require(
-      address(withdrawer_) != address(0),
-      "SharedSmartVault: withdrawer_ cannot be zero address"
-    );
-    require(investments_.length != 0, "SharedSmartVault: investments_ cannot be empty.");
+    if (address(collector_) == address(0))
+      revert InvalidAddress(address(collector_), "collector_ cannot be zero address.");
+    if (address(withdrawer_) == address(0))
+      revert InvalidAddress(address(withdrawer_), "withdrawer_ cannot be zero address.");
+    if (_investments.length == 1)
+      revert EmptyInvestments(_investments.length, "investments_ cannot be empty.");
     _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
 
     _collector = collector_;
@@ -130,7 +130,9 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
     uint256 prevBalance = _balance();
     super._deposit(caller, receiver, assets, shares);
     _collector.call(asset(), assets);
-    require(_balance() == prevBalance, "SharedSmartVault: the balance should be the same.");
+    uint256 balance = _balance();
+    if (balance != prevBalance)
+      revert DifferentBalance(balance, prevBalance, "the balance should be the same.");
   }
 
   function _withdraw(
@@ -178,18 +180,17 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
   }
 
   function _addInvestment(IERC4626 investment_) internal {
-    require(
-      address(investment_) != address(0),
-      "SharedSmartVault: investment_ cannot be zero address."
-    );
-    require(
-      getInvestmentIndex(investment_) == type(uint256).max,
-      "SharedSmartVault: investment_ already exists."
-    );
-    require(
-      investment_.asset() == asset(),
-      "SharedSmartVault: the investment_ asset has to be the same as the vault asset."
-    );
+    if (address(investment_) == address(0))
+      revert InvalidAddress(address(investment_), "investment_ cannot be zero address.");
+    if (getInvestmentIndex(investment_) != type(uint256).max)
+      revert InvestmentAlreadyExists(address(investment_), "investment_ already exists.");
+    if (investment_.asset() != asset())
+      revert DifferentAsset(
+        investment_.asset(),
+        asset(),
+        "the investment_ asset has to be the same as the vault asset."
+      );
+
     _investments.push(investment_);
     emit InvestmentAdded(investment_);
   }
@@ -199,17 +200,20 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
   }
 
   function removeInvestment(IERC4626 investment_) external onlyRole(REMOVE_INVESTMENT_ROLE) {
-    require(
-      address(investment_) != address(0),
-      "SharedSmartVault: investment_ cannot be zero address."
-    );
-    require(
-      investment_.balanceOf(_smartVault) == 0,
-      "SharedSmartVault: cannot remove an investment_ with funds."
-    );
-    require(_investments.length != 1, "SharedSmartVault: cannot remove all the _investments.");
+    if (address(investment_) == address(0))
+      revert InvalidAddress(address(investment_), "investment_ cannot be zero address.");
+    uint256 balance = investment_.balanceOf(_smartVault);
+    if (balance != 0)
+      revert InvestmentWithFunds(
+        address(investment_),
+        balance,
+        "cannot remove an investment_ with funds."
+      );
+
+    if (_investments.length == 1)
+      revert EmptyInvestments(_investments.length, "cannot remove all the _investments.");
     uint256 index = getInvestmentIndex(investment_);
-    require(index != type(uint256).max, "SharedSmartVault: investment_ not found.");
+    if (index == type(uint256).max) revert NotFound(address(investment_), "investment_ not found.");
     for (uint256 i = index; i < _investments.length - 1; i++) {
       _investments[i] = _investments[i + 1];
     }
