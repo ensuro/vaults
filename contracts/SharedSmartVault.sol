@@ -25,6 +25,7 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
   bytes32 public constant ADD_INVESTMENT_ROLE = keccak256("ADD_INVESTMENT_ROLE");
   bytes32 public constant REMOVE_INVESTMENT_ROLE = keccak256("REMOVE_INVESTMENT_ROLE");
 
+  /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   address internal immutable _smartVault;
   ICallable internal _collector;
   ICallable internal _withdrawer;
