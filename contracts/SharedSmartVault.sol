@@ -33,18 +33,21 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
   event InvestmentAdded(IERC4626 investment);
   event InvestmentRemoved(IERC4626 investment);
 
-  error InvalidAddress(address _address, string _message);
-  error NotFound(address investment, string message);
-  error InvestmentAlreadyExists(address investment, string message);
-  error DifferentAsset(address investmentAsset, address asset, string message);
-  error InvestmentWithFunds(address investment, uint256 balance, string message);
-  error EmptyInvestments(uint256 length, string message);
-  error DifferentBalance(uint256 currentBalance, uint256 prevBalance, string message);
+  error InvalidSmartVault(address smartVault);
+  error InvalidAsset(address asset);
+  error InvalidCollector(address collector);
+  error InvalidWithdrawer(address withdrawer);
+  error InvalidInvestment(address investment);
+  error InvestmentNotFound(address investment);
+  error InvestmentAlreadyExists(address investment);
+  error DifferentAsset(address investmentAsset, address asset);
+  error InvestmentWithFunds(address investment, uint256 balance);
+  error EmptyInvestments(uint256 length);
+  error DifferentBalance(uint256 currentBalance, uint256 prevBalance);
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(address smartVault_) {
-    if (smartVault_ == address(0))
-      revert InvalidAddress(smartVault_, "smartVault_ cannot be zero address.");
+    if (smartVault_ == address(0)) revert InvalidSmartVault(address(0));
     _disableInitializers();
     _smartVault = smartVault_;
   }
@@ -74,8 +77,7 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
   ) internal onlyInitializing {
     __UUPSUpgradeable_init();
     __AccessControl_init();
-    if (address(asset_) == address(0))
-      revert InvalidAddress(address(asset_), "asset_ cannot be zero address.");
+    if (address(asset_) == address(0)) revert InvalidAsset(address(0));
     __ERC4626_init(asset_);
     __ERC20_init(name_, symbol_);
     __SharedSmartVault_init_unchained(collector_, withdrawer_, investments_);
@@ -87,12 +89,9 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
     ICallable withdrawer_,
     IERC4626[] calldata investments_
   ) internal onlyInitializing {
-    if (address(collector_) == address(0))
-      revert InvalidAddress(address(collector_), "collector_ cannot be zero address.");
-    if (address(withdrawer_) == address(0))
-      revert InvalidAddress(address(withdrawer_), "withdrawer_ cannot be zero address.");
-    if (_investments.length == 1)
-      revert EmptyInvestments(_investments.length, "investments_ cannot be empty.");
+    if (address(collector_) == address(0)) revert InvalidCollector(address(0));
+    if (address(withdrawer_) == address(0)) revert InvalidWithdrawer(address(0));
+    if (_investments.length == 1) revert EmptyInvestments(_investments.length);
     _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
 
     _collector = collector_;
@@ -131,8 +130,7 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
     super._deposit(caller, receiver, assets, shares);
     _collector.call(asset(), assets);
     uint256 balance = _balance();
-    if (balance != prevBalance)
-      revert DifferentBalance(balance, prevBalance, "the balance should be the same.");
+    if (balance != prevBalance) revert DifferentBalance(balance, prevBalance);
   }
 
   function _withdraw(
@@ -189,16 +187,10 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
   }
 
   function _addInvestment(IERC4626 investment_) internal {
-    if (address(investment_) == address(0))
-      revert InvalidAddress(address(investment_), "investment_ cannot be zero address.");
+    if (address(investment_) == address(0)) revert InvalidInvestment(address(0));
     if (getInvestmentIndex(investment_) != type(uint256).max)
-      revert InvestmentAlreadyExists(address(investment_), "investment_ already exists.");
-    if (investment_.asset() != asset())
-      revert DifferentAsset(
-        investment_.asset(),
-        asset(),
-        "the investment_ asset has to be the same as the vault asset."
-      );
+      revert InvestmentAlreadyExists(address(investment_));
+    if (investment_.asset() != asset()) revert DifferentAsset(investment_.asset(), asset());
 
     _investments.push(investment_);
     emit InvestmentAdded(investment_);
@@ -209,20 +201,12 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
   }
 
   function removeInvestment(IERC4626 investment_) external onlyRole(REMOVE_INVESTMENT_ROLE) {
-    if (address(investment_) == address(0))
-      revert InvalidAddress(address(investment_), "investment_ cannot be zero address.");
+    if (address(investment_) == address(0)) revert InvalidInvestment(address(0));
     uint256 balance = investment_.balanceOf(_smartVault);
-    if (balance != 0)
-      revert InvestmentWithFunds(
-        address(investment_),
-        balance,
-        "cannot remove an investment_ with funds."
-      );
-
-    if (_investments.length == 1)
-      revert EmptyInvestments(_investments.length, "cannot remove all the _investments.");
+    if (balance != 0) revert InvestmentWithFunds(address(investment_), balance);
+    if (_investments.length == 1) revert EmptyInvestments(_investments.length);
     uint256 index = getInvestmentIndex(investment_);
-    if (index == type(uint256).max) revert NotFound(address(investment_), "investment_ not found.");
+    if (index == type(uint256).max) revert InvestmentNotFound(address(investment_));
     for (uint256 i = index; i < _investments.length - 1; i++) {
       _investments[i] = _investments[i + 1];
     }
