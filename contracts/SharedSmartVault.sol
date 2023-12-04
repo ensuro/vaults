@@ -166,7 +166,7 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
   }
 
   /**
-   * @dev See {IERC4626-deposit}.
+   * @dev See {IERC4626-maxWithdraw}.
    */
   function maxWithdraw(address owner) public view virtual override returns (uint256) {
     uint256 max = 0;
@@ -179,7 +179,7 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
   }
 
   /**
-   * @dev See {IERC4626-deposit}.
+   * @dev See {IERC4626-maxRedeem}.
    */
   function maxRedeem(address owner) public view virtual override returns (uint256) {
     uint256 maxW = maxWithdraw(owner);
@@ -188,7 +188,7 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
   }
 
   /**
-   * @dev See {IERC4626-deposit}.
+   * @dev See {IERC4626-totalAssets}.
    */
   function totalAssets() public view virtual override returns (uint256 assets) {
     assets = IERC20Metadata(asset()).balanceOf(_smartVault);

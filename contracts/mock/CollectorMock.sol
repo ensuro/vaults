@@ -10,8 +10,7 @@ contract CollectorMock is ICallable {
     _smartVault = smartVault_;
   }
 
-  function call(address token, uint256 amount) external view {
-    SmartVaultMock(_smartVault).deposit(msg.sender, token, amount);
-    return;
+  function call(address token, uint256 amount) public virtual {
+    SmartVaultMock(_smartVault).collect(msg.sender, token, amount);
   }
 }
