@@ -92,7 +92,7 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
   ) internal onlyInitializing {
     if (address(collector_) == address(0)) revert InvalidCollector(address(0));
     if (address(withdrawer_) == address(0)) revert InvalidWithdrawer(address(0));
-    if (_investments.length == 1) revert EmptyInvestments(_investments.length);
+    if (investments_.length == 0) revert EmptyInvestments(_investments.length);
     _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
     _collector = collector_;
     _withdrawer = withdrawer_;
