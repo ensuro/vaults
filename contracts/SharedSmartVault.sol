@@ -94,7 +94,6 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
     if (address(withdrawer_) == address(0)) revert InvalidWithdrawer(address(0));
     if (_investments.length == 1) revert EmptyInvestments(_investments.length);
     _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
-
     _collector = collector_;
     _withdrawer = withdrawer_;
     for (uint256 i = 0; i < investments_.length; i++) {
@@ -109,6 +108,27 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
 
   function _balance() internal view returns (uint256) {
     return IERC20Metadata(asset()).balanceOf(address(this));
+  }
+
+  /**
+   * @dev Returns the address of the Collector
+   */
+  function collector() public view virtual returns (ICallable) {
+    return _collector;
+  }
+
+  /**
+   * @dev Returns the address of the Withdrawer
+   */
+  function withdrawer() public view virtual returns (ICallable) {
+    return _withdrawer;
+  }
+
+  /**
+   * @dev Returns the address of the SmartVault
+   */
+  function smartVault() public view virtual returns (address) {
+    return _smartVault;
   }
 
   /**

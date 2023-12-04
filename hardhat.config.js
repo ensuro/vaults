@@ -19,4 +19,11 @@ module.exports = {
     runOnCompile: false,
     disambiguatePaths: false,
   },
+  dependencyCompiler: {
+    paths: [
+      "@ensuro/core/contracts/PolicyPool.sol",
+      "@ensuro/core/contracts/AccessManager.sol",
+      "@ensuro/core/contracts/mocks/TestCurrency.sol",
+    ],
+  },
 };
