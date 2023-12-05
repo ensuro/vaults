@@ -131,6 +131,10 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
     return _smartVault;
   }
 
+  function getInvestmentByIndex(uint256 index) public view virtual returns (IERC4626) {
+    return _investments[index];
+  }
+
   /**
    * @dev See {IERC4626-deposit}.
    */

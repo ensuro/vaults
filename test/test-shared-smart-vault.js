@@ -67,12 +67,13 @@ describe("SharedSmartVault contract tests", function () {
   }
 
   it("SharedSmartVault init", async () => {
-    const { collector, withdrawer, sv, sharedSmartVault, currency } = await helpers.loadFixture(deployPoolFixture);
+    const { collector, withdrawer, sv, inv, sharedSmartVault, currency } = await helpers.loadFixture(deployPoolFixture);
 
     expect(await sharedSmartVault.name()).to.equal(NAME);
     expect(await sharedSmartVault.symbol()).to.equal(SYMB);
     expect(await sharedSmartVault.smartVault()).to.equal(sv.address);
     expect(await sharedSmartVault.collector()).to.equal(collector.address);
+    expect(await sharedSmartVault.getInvestmentByIndex(0)).to.equal(inv.address);
     expect(await sharedSmartVault.withdrawer()).to.equal(withdrawer.address);
     expect(await sharedSmartVault.asset()).to.equal(currency.address);
     expect(await sharedSmartVault.totalAssets()).to.equal(0);
@@ -258,6 +259,9 @@ describe("SharedSmartVault contract tests", function () {
     const newInvestment = await InvestmentMock.deploy("Compound", "COMP", currency.address);
     await sharedSmartVault.connect(addInv).addInvestment(newInvestment.address);
 
+    expect(await sharedSmartVault.getInvestmentByIndex(0)).to.equal(inv.address);
+    expect(await sharedSmartVault.getInvestmentByIndex(1)).to.equal(newInvestment.address);
+
     const randomInv = await InvestmentMock.deploy("Random", "rdm", currency.address);
     await expect(sharedSmartVault.connect(remInv).removeInvestment(randomInv.address))
       .to.be.revertedWithCustomError(SharedSmartVault, "InvestmentNotFound")
@@ -265,6 +269,8 @@ describe("SharedSmartVault contract tests", function () {
 
     // now I can remove
     await sharedSmartVault.connect(remInv).removeInvestment(inv.address);
+    // now the first investment is the newInvestment
+    expect(await sharedSmartVault.getInvestmentByIndex(0)).to.equal(newInvestment.address);
   });
 
   it("Address without LP_ROLE can't deposit", async () => {
