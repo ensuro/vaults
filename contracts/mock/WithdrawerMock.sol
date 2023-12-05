@@ -12,6 +12,5 @@ contract WithdrawerMock is ICallable {
 
   function call(address token, uint256 amount) public virtual {
     SmartVaultMock(_smartVault).withdraw(msg.sender, token, amount);
-    return;
   }
 }

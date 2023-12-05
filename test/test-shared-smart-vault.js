@@ -58,6 +58,7 @@ describe("SharedSmartVault contract tests", function () {
     );
 
     await sharedSmartVault.grantRole(await sharedSmartVault.LP_ROLE(), lp.address);
+    await sharedSmartVault.grantRole(await sharedSmartVault.LP_ROLE(), lp2.address);
     await sharedSmartVault.grantRole(await sharedSmartVault.ADD_INVESTMENT_ROLE(), addInv.address);
     await sharedSmartVault.grantRole(await sharedSmartVault.REMOVE_INVESTMENT_ROLE(), remInv.address);
     await sharedSmartVault.grantRole(await sharedSmartVault.GUARDIAN_ROLE(), guardian.address);
@@ -264,5 +265,109 @@ describe("SharedSmartVault contract tests", function () {
 
     // now I can remove
     await sharedSmartVault.connect(remInv).removeInvestment(inv.address);
+  });
+
+  it("Address without LP_ROLE can't deposit", async () => {
+    const { sharedSmartVault } = await helpers.loadFixture(deployPoolFixture);
+
+    await expect(sharedSmartVault.connect(anon).deposit(_A(800), anon.address)).to.be.revertedWith(
+      accessControlMessage(anon.address, null, "LP_ROLE")
+    );
+  });
+
+  it("SharedSmartVault deposit and check balances", async () => {
+    const { sharedSmartVault, sv, currency } = await helpers.loadFixture(deployPoolFixture);
+
+    expect(await sharedSmartVault.totalAssets()).to.equal(0);
+
+    await currency.connect(lp).approve(sharedSmartVault.address, _A(5000));
+    await sharedSmartVault.connect(lp).deposit(_A(1000), lp.address);
+
+    expect(await sharedSmartVault.totalAssets()).to.equal(_A(1000));
+    expect(await currency.balanceOf(sv.address)).to.equal(_A(1000));
+  });
+
+  it("SharedSmartVault withdraw and check balances", async () => {
+    const { sharedSmartVault, sv, currency } = await helpers.loadFixture(deployPoolFixture);
+
+    expect(await sharedSmartVault.totalAssets()).to.equal(0);
+    expect(await currency.balanceOf(lp.address)).to.equal(_A(10000));
+
+    await currency.connect(lp).approve(sharedSmartVault.address, _A(5000));
+    await sharedSmartVault.connect(lp).deposit(_A(1000), lp.address);
+
+    expect(await currency.balanceOf(lp.address)).to.equal(_A(9000));
+    expect(await sharedSmartVault.totalAssets()).to.equal(_A(1000));
+    expect(await currency.balanceOf(sv.address)).to.equal(_A(1000));
+
+    expect(await sharedSmartVault.maxWithdraw(lp.address)).to.equal(_A(1000));
+    expect(await sharedSmartVault.maxRedeem(lp.address)).to.equal(_A(1000));
+    await sharedSmartVault.connect(lp).withdraw(_A(1000), lp.address, lp.address);
+
+    expect(await currency.balanceOf(lp.address)).to.equal(_A(10000));
+    expect(await sharedSmartVault.totalAssets()).to.equal(_A(0));
+    expect(await currency.balanceOf(sv.address)).to.equal(_A(0));
+  });
+
+  it("SharedSmartVault deposit and invest in the investments", async () => {
+    const { sharedSmartVault, sv, inv, currency } = await helpers.loadFixture(deployPoolFixture);
+
+    await currency.connect(lp).approve(sharedSmartVault.address, _A(5000));
+    await currency.connect(lp2).approve(sharedSmartVault.address, _A(5000));
+    await sharedSmartVault.connect(lp).deposit(_A(1000), lp.address);
+    await sharedSmartVault.connect(lp2).deposit(_A(1000), lp2.address);
+
+    expect(await sharedSmartVault.totalAssets()).to.equal(_A(2000));
+    expect(await currency.balanceOf(sv.address)).to.equal(_A(2000));
+    expect(await sharedSmartVault.maxWithdraw(lp.address)).to.equal(_A(1000));
+    expect(await sharedSmartVault.maxWithdraw(lp2.address)).to.equal(_A(1000));
+
+    // SV invest all in the inv
+    await sv.invest(inv.address, currency.address, _A(2000));
+    expect(await inv.totalAssets()).to.equal(_A(2000));
+    expect(await currency.balanceOf(inv.address)).to.equal(_A(2000));
+
+    // try to remove the investment with funds
+    const SharedSmartVault = await ethers.getContractFactory("SharedSmartVault");
+    await expect(sharedSmartVault.connect(remInv).removeInvestment(inv.address))
+      .to.be.revertedWithCustomError(SharedSmartVault, "InvestmentWithFunds")
+      .withArgs(inv.address, _A(2000));
+
+    // TotalAssets should be the same but the balance of the SV is 0 now
+    expect(await sharedSmartVault.totalAssets()).to.equal(_A(2000));
+    expect(await currency.balanceOf(sv.address)).to.equal(_A(0));
+
+    // no liquid money
+    expect(await sharedSmartVault.maxWithdraw(lp.address)).to.equal(_A(0));
+    expect(await sharedSmartVault.maxWithdraw(lp2.address)).to.equal(_A(0));
+  });
+
+  it("SharedSmartVault invest, deinvest and withdraw", async () => {
+    const { sharedSmartVault, sv, inv, currency } = await helpers.loadFixture(deployPoolFixture);
+
+    await currency.connect(lp).approve(sharedSmartVault.address, _A(5000));
+    await currency.connect(lp2).approve(sharedSmartVault.address, _A(5000));
+    await sharedSmartVault.connect(lp).deposit(_A(1000), lp.address);
+    await sharedSmartVault.connect(lp2).deposit(_A(1000), lp2.address);
+    expect(await sharedSmartVault.totalAssets()).to.equal(_A(2000));
+    expect(await currency.balanceOf(sv.address)).to.equal(_A(2000));
+    expect(await sharedSmartVault.maxWithdraw(lp.address)).to.equal(_A(1000));
+    expect(await sharedSmartVault.maxWithdraw(lp2.address)).to.equal(_A(1000));
+
+    // SV invest only 1500 in the investment
+    await sv.invest(inv.address, currency.address, _A(1500));
+    expect(await inv.totalAssets()).to.equal(_A(1500));
+    expect(await currency.balanceOf(inv.address)).to.equal(_A(1500));
+    expect(await currency.balanceOf(sv.address)).to.equal(_A(500));
+
+    // TotalAssets should be the same but the balance of the SV is 0 now
+    expect(await sharedSmartVault.totalAssets()).to.equal(_A(2000));
+    expect(await sharedSmartVault.maxWithdraw(lp.address)).to.equal(_A(500));
+    expect(await sharedSmartVault.maxRedeem(lp2.address)).to.equal(_A(500));
+
+    await sv.deinvest(inv.address, _A(500));
+    expect(await inv.totalAssets()).to.equal(_A(1000));
+    expect(await currency.balanceOf(inv.address)).to.equal(_A(1000));
+    expect(await currency.balanceOf(sv.address)).to.equal(_A(1000));
   });
 });
