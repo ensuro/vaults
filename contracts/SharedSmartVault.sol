@@ -136,6 +136,16 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
   }
 
   /**
+   * @dev See {IERC4626-mint}.
+   */
+  function mint(
+    uint256 assets,
+    address receiver
+  ) public virtual override onlyRole(LP_ROLE) returns (uint256) {
+    return super.mint(assets, receiver);
+  }
+
+  /**
    * @dev See {IERC4626-deposit}.
    */
   function deposit(
@@ -152,10 +162,34 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
     uint256 shares
   ) internal virtual override {
     uint256 prevBalance = _balance();
+    // Transfers the assets from the caller and mints the shares
     super._deposit(caller, receiver, assets, shares);
     _collector.call(asset(), assets);
     uint256 balance = _balance();
+    // Checks the collector took all the received assets from this contract
     if (balance != prevBalance) revert DifferentBalance(balance, prevBalance);
+  }
+
+  /**
+   * @dev See {IERC4626-withdraw}.
+   */
+  function withdraw(
+    uint256 assets,
+    address receiver,
+    address owner
+  ) public virtual override onlyRole(LP_ROLE) returns (uint256) {
+    return super.withdraw(assets, receiver, owner);
+  }
+
+  /**
+   * @dev See {IERC4626-redeem}.
+   */
+  function redeem(
+    uint256 assets,
+    address receiver,
+    address owner
+  ) public virtual override onlyRole(LP_ROLE) returns (uint256) {
+    return super.withdraw(assets, receiver, owner);
   }
 
   function _withdraw(
@@ -171,6 +205,7 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
 
   /**
    * @dev See {IERC4626-maxWithdraw}.
+   * Is the minimum between the total assets of the user and the maximum amount withdrawable from the smart vault
    */
   function maxWithdraw(address owner) public view virtual override returns (uint256) {
     uint256 max = IERC20Metadata(asset()).balanceOf(_smartVault);
@@ -202,7 +237,7 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
     return assets;
   }
 
-  function getInvestmentIndex(IERC4626 investment_) internal virtual returns (uint256) {
+  function getInvestmentIndex(IERC4626 investment_) public view virtual returns (uint256) {
     for (uint256 i = 0; i < _investments.length; i++) {
       if (_investments[i] == investment_) {
         return i;
@@ -232,9 +267,8 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
     if (_investments.length == 1) revert EmptyInvestments(_investments.length);
     uint256 index = getInvestmentIndex(investment_);
     if (index == type(uint256).max) revert InvestmentNotFound(address(investment_));
-    for (uint256 i = index; i < _investments.length - 1; i++) {
-      _investments[i] = _investments[i + 1];
-    }
+    if (index != _investments.length - 1)
+      _investments[index] = _investments[_investments.length - 1];
     _investments.pop();
     emit InvestmentRemoved(investment_);
   }

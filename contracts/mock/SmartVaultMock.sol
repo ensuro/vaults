@@ -12,8 +12,7 @@ contract SmartVaultMock {
   }
 
   function withdraw(address receiver, address token, uint256 amount) public virtual {
-    IERC20(token).approve(address(this), amount);
-    IERC20(token).safeTransferFrom(address(this), receiver, amount);
+    IERC20(token).transfer(receiver, amount);
   }
 
   function invest(IERC4626 investment, address token, uint256 amount) public virtual {

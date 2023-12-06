@@ -1,10 +1,11 @@
 const { expect } = require("chai");
 const { amountFunction, accessControlMessage } = require("@ensuro/core/js/utils");
-const { initCurrency, deployPool } = require("@ensuro/core/js/test-utils");
+const { initCurrency } = require("@ensuro/core/js/test-utils");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
 const { ethers } = hre;
+const { MaxUint256 } = hre.ethers.constants;
 const { AddressZero } = ethers.constants;
 
 describe("SharedSmartVault contract tests", function () {
@@ -19,21 +20,12 @@ describe("SharedSmartVault contract tests", function () {
     _A = amountFunction(6);
   });
 
-  async function deployPoolFixture() {
+  async function deployFixture() {
     const currency = await initCurrency(
       { name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(50000) },
       [lp, lp2, cust, owner],
       [_A(10000), _A(10000), _A(2000), _A(1000)]
     );
-
-    const pool = await deployPool({
-      currency: currency.address,
-      grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
-      treasuryAddress: "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199", // Random address
-    });
-    pool._A = _A;
-
-    const accessManager = await ethers.getContractAt("AccessManager", await pool.access());
 
     const SmartVaultMock = await ethers.getContractFactory("SmartVaultMock");
     const sv = await SmartVaultMock.deploy();
@@ -47,9 +39,15 @@ describe("SharedSmartVault contract tests", function () {
     const InvestmentMock = await ethers.getContractFactory("InvestmentMock");
     const inv = await InvestmentMock.deploy("AAVE", "aaveInv", currency.address);
 
-    const SharedSmartVault = await ethers.getContractFactory("SharedSmartVault");
+    const SSVContract = await ethers.getContractFactory("SharedSmartVault");
+    return { currency, sv, inv, collector, withdrawer, SSVContract };
+  }
+
+  async function deployFixtureSSVDeployed() {
+    const { collector, withdrawer, sv, inv, SSVContract, currency } = await helpers.loadFixture(deployFixture);
+
     const sharedSmartVault = await hre.upgrades.deployProxy(
-      SharedSmartVault,
+      SSVContract,
       [NAME, SYMB, collector.address, withdrawer.address, [inv.address], currency.address],
       {
         kind: "uups",
@@ -63,11 +61,12 @@ describe("SharedSmartVault contract tests", function () {
     await sharedSmartVault.grantRole(await sharedSmartVault.REMOVE_INVESTMENT_ROLE(), remInv.address);
     await sharedSmartVault.grantRole(await sharedSmartVault.GUARDIAN_ROLE(), guardian.address);
 
-    return { currency, pool, accessManager, sv, inv, collector, withdrawer, sharedSmartVault };
+    return { currency, sv, inv, collector, withdrawer, sharedSmartVault, SSVContract };
   }
 
   it("SharedSmartVault init", async () => {
-    const { collector, withdrawer, sv, inv, sharedSmartVault, currency } = await helpers.loadFixture(deployPoolFixture);
+    const { collector, withdrawer, sv, inv, sharedSmartVault, currency } =
+      await helpers.loadFixture(deployFixtureSSVDeployed);
 
     expect(await sharedSmartVault.name()).to.equal(NAME);
     expect(await sharedSmartVault.symbol()).to.equal(SYMB);
@@ -80,13 +79,12 @@ describe("SharedSmartVault contract tests", function () {
   });
 
   it("SharedSmartVault InvalidSmartVault error", async () => {
-    const { collector, withdrawer, inv, currency } = await helpers.loadFixture(deployPoolFixture);
-    const SharedSmartVault = await ethers.getContractFactory("SharedSmartVault");
+    const { collector, withdrawer, inv, currency, SSVContract } = await helpers.loadFixture(deployFixture);
 
     // Invalid Withdrawer
     await expect(
       hre.upgrades.deployProxy(
-        SharedSmartVault,
+        SSVContract,
         [NAME, SYMB, collector.address, withdrawer.address, [inv.address], currency.address],
         {
           kind: "uups",
@@ -94,18 +92,17 @@ describe("SharedSmartVault contract tests", function () {
         }
       )
     )
-      .to.be.revertedWithCustomError(SharedSmartVault, "InvalidSmartVault")
+      .to.be.revertedWithCustomError(SSVContract, "InvalidSmartVault")
       .withArgs(AddressZero);
   });
 
   it("SharedSmartVault InvalidCollector error", async () => {
-    const { withdrawer, sv, inv, currency } = await helpers.loadFixture(deployPoolFixture);
-    const SharedSmartVault = await ethers.getContractFactory("SharedSmartVault");
+    const { withdrawer, sv, inv, currency, SSVContract } = await helpers.loadFixture(deployFixture);
 
     // Invalid Collector
     await expect(
       hre.upgrades.deployProxy(
-        SharedSmartVault,
+        SSVContract,
         [NAME, SYMB, AddressZero, withdrawer.address, [inv.address], currency.address],
         {
           kind: "uups",
@@ -113,18 +110,17 @@ describe("SharedSmartVault contract tests", function () {
         }
       )
     )
-      .to.be.revertedWithCustomError(SharedSmartVault, "InvalidCollector")
+      .to.be.revertedWithCustomError(SSVContract, "InvalidCollector")
       .withArgs(AddressZero);
   });
 
   it("SharedSmartVault InvalidWithdrawer error", async () => {
-    const { collector, sv, inv, currency } = await helpers.loadFixture(deployPoolFixture);
-    const SharedSmartVault = await ethers.getContractFactory("SharedSmartVault");
+    const { collector, sv, inv, currency, SSVContract } = await helpers.loadFixture(deployFixture);
 
     // Invalid Withdrawer
     await expect(
       hre.upgrades.deployProxy(
-        SharedSmartVault,
+        SSVContract,
         [NAME, SYMB, collector.address, AddressZero, [inv.address], currency.address],
         {
           kind: "uups",
@@ -132,18 +128,17 @@ describe("SharedSmartVault contract tests", function () {
         }
       )
     )
-      .to.be.revertedWithCustomError(SharedSmartVault, "InvalidWithdrawer")
+      .to.be.revertedWithCustomError(SSVContract, "InvalidWithdrawer")
       .withArgs(AddressZero);
   });
 
   it("SharedSmartVault InvalidAsset error", async () => {
-    const { collector, withdrawer, sv, inv } = await helpers.loadFixture(deployPoolFixture);
-    const SharedSmartVault = await ethers.getContractFactory("SharedSmartVault");
+    const { collector, withdrawer, sv, inv, SSVContract } = await helpers.loadFixture(deployFixture);
 
     // Invalid Asset
     await expect(
       hre.upgrades.deployProxy(
-        SharedSmartVault,
+        SSVContract,
         [NAME, SYMB, collector.address, withdrawer.address, [inv.address], AddressZero],
         {
           kind: "uups",
@@ -151,37 +146,30 @@ describe("SharedSmartVault contract tests", function () {
         }
       )
     )
-      .to.be.revertedWithCustomError(SharedSmartVault, "InvalidAsset")
+      .to.be.revertedWithCustomError(SSVContract, "InvalidAsset")
       .withArgs(AddressZero);
   });
 
   it("SharedSmartVault EmptyInvestments error", async () => {
-    const { collector, withdrawer, sv, currency } = await helpers.loadFixture(deployPoolFixture);
-    const SharedSmartVault = await ethers.getContractFactory("SharedSmartVault");
-
+    const { collector, withdrawer, sv, currency, SSVContract } = await helpers.loadFixture(deployFixture);
     // EmptyInvestments
     await expect(
-      hre.upgrades.deployProxy(
-        SharedSmartVault,
-        [NAME, SYMB, collector.address, withdrawer.address, [], currency.address],
-        {
-          kind: "uups",
-          constructorArgs: [sv.address],
-        }
-      )
+      hre.upgrades.deployProxy(SSVContract, [NAME, SYMB, collector.address, withdrawer.address, [], currency.address], {
+        kind: "uups",
+        constructorArgs: [sv.address],
+      })
     )
-      .to.be.revertedWithCustomError(SharedSmartVault, "EmptyInvestments")
+      .to.be.revertedWithCustomError(SSVContract, "EmptyInvestments")
       .withArgs(0);
   });
 
   it("Only GUARDIAN_ROLE can upgrade", async () => {
-    const { sv, sharedSmartVault } = await helpers.loadFixture(deployPoolFixture);
+    const { sv, sharedSmartVault, SSVContract } = await helpers.loadFixture(deployFixtureSSVDeployed);
     expect(await sharedSmartVault.smartVault()).to.equal(sv.address);
 
     const SmartVaultMock = await ethers.getContractFactory("SmartVaultMock");
     const newSV = await SmartVaultMock.deploy();
-    const SharedSmartVault = await ethers.getContractFactory("SharedSmartVault");
-    const newImpl = await SharedSmartVault.deploy(newSV.address);
+    const newImpl = await SSVContract.deploy(newSV.address);
 
     await expect(sharedSmartVault.connect(anon).upgradeTo(newImpl.address)).to.be.revertedWith(
       accessControlMessage(anon.address, null, "GUARDIAN_ROLE")
@@ -195,11 +183,10 @@ describe("SharedSmartVault contract tests", function () {
   });
 
   it("Only ADD_INVESTMENT_ROLE can add an investment", async () => {
-    const { sharedSmartVault, currency } = await helpers.loadFixture(deployPoolFixture);
+    const { sharedSmartVault, currency, SSVContract } = await helpers.loadFixture(deployFixtureSSVDeployed);
     // anyone can add zero address investment
-    const SharedSmartVault = await ethers.getContractFactory("SharedSmartVault");
     await expect(sharedSmartVault.connect(addInv).addInvestment(AddressZero))
-      .to.be.revertedWithCustomError(SharedSmartVault, "InvalidInvestment")
+      .to.be.revertedWithCustomError(SSVContract, "InvalidInvestment")
       .withArgs(AddressZero);
 
     const InvestmentMock = await ethers.getContractFactory("InvestmentMock");
@@ -213,14 +200,12 @@ describe("SharedSmartVault contract tests", function () {
 
     // trying to add again the same investment
     await expect(sharedSmartVault.connect(addInv).addInvestment(newInvestment.address))
-      .to.be.revertedWithCustomError(SharedSmartVault, "InvestmentAlreadyExists")
+      .to.be.revertedWithCustomError(SSVContract, "InvestmentAlreadyExists")
       .withArgs(newInvestment.address);
   });
 
   it("Can't add investment with different asset", async () => {
-    const { sharedSmartVault, currency } = await helpers.loadFixture(deployPoolFixture);
-    const SharedSmartVault = await ethers.getContractFactory("SharedSmartVault");
-
+    const { sharedSmartVault, currency, SSVContract } = await helpers.loadFixture(deployFixtureSSVDeployed);
     const newAsset = await initCurrency({
       name: "Other Asset",
       symbol: "OTHER",
@@ -233,16 +218,15 @@ describe("SharedSmartVault contract tests", function () {
 
     // trying to add again the same investment
     await expect(sharedSmartVault.connect(addInv).addInvestment(newInvestment.address))
-      .to.be.revertedWithCustomError(SharedSmartVault, "DifferentAsset")
+      .to.be.revertedWithCustomError(SSVContract, "DifferentAsset")
       .withArgs(newAsset.address, currency.address);
   });
 
   it("Only REMOVE_INVESTMENT_ROLE can remove an investment", async () => {
-    const { sharedSmartVault, inv, currency } = await helpers.loadFixture(deployPoolFixture);
+    const { sharedSmartVault, inv, currency, SSVContract } = await helpers.loadFixture(deployFixtureSSVDeployed);
     // can't remove zero address
-    const SharedSmartVault = await ethers.getContractFactory("SharedSmartVault");
     await expect(sharedSmartVault.connect(remInv).removeInvestment(AddressZero))
-      .to.be.revertedWithCustomError(SharedSmartVault, "InvalidInvestment")
+      .to.be.revertedWithCustomError(SSVContract, "InvalidInvestment")
       .withArgs(AddressZero);
 
     await expect(sharedSmartVault.connect(anon).removeInvestment(inv.address)).to.be.revertedWith(
@@ -251,7 +235,7 @@ describe("SharedSmartVault contract tests", function () {
 
     // cannot be deleted if there is only one investment
     await expect(sharedSmartVault.connect(remInv).removeInvestment(inv.address))
-      .to.be.revertedWithCustomError(SharedSmartVault, "EmptyInvestments")
+      .to.be.revertedWithCustomError(SSVContract, "EmptyInvestments")
       .withArgs(1);
 
     // I'll add new investment to remove the firstone
@@ -264,7 +248,7 @@ describe("SharedSmartVault contract tests", function () {
 
     const randomInv = await InvestmentMock.deploy("Random", "rdm", currency.address);
     await expect(sharedSmartVault.connect(remInv).removeInvestment(randomInv.address))
-      .to.be.revertedWithCustomError(SharedSmartVault, "InvestmentNotFound")
+      .to.be.revertedWithCustomError(SSVContract, "InvestmentNotFound")
       .withArgs(randomInv.address);
 
     // now I can remove
@@ -273,16 +257,58 @@ describe("SharedSmartVault contract tests", function () {
     expect(await sharedSmartVault.getInvestmentByIndex(0)).to.equal(newInvestment.address);
   });
 
-  it("Address without LP_ROLE can't deposit", async () => {
-    const { sharedSmartVault } = await helpers.loadFixture(deployPoolFixture);
+  it("REMOVE_INVESTMENT_ROLE remove the last investment in the array", async () => {
+    const { sharedSmartVault, inv, currency } = await helpers.loadFixture(deployFixtureSSVDeployed);
 
+    const InvestmentMock = await ethers.getContractFactory("InvestmentMock"); // mock
+    const newInvestment = await InvestmentMock.deploy("Compound", "COMP", currency.address);
+    await sharedSmartVault.connect(addInv).addInvestment(newInvestment.address);
+
+    expect(await sharedSmartVault.getInvestmentByIndex(0)).to.equal(inv.address);
+    expect(await sharedSmartVault.getInvestmentByIndex(1)).to.equal(newInvestment.address);
+
+    await sharedSmartVault.connect(remInv).removeInvestment(newInvestment.address);
+    expect(await sharedSmartVault.getInvestmentByIndex(0)).to.equal(inv.address);
+
+    // newInvestment not exists
+    expect(await sharedSmartVault.getInvestmentIndex(newInvestment.address)).to.equal(MaxUint256);
+  });
+
+  it("Address without LP_ROLE can't deposit/mint/withdraw/redeem", async () => {
+    const { sharedSmartVault, sv, currency } = await helpers.loadFixture(deployFixtureSSVDeployed);
+
+    // Without LP_ROLE can't deposit/mint
     await expect(sharedSmartVault.connect(anon).deposit(_A(800), anon.address)).to.be.revertedWith(
       accessControlMessage(anon.address, null, "LP_ROLE")
     );
+    await expect(sharedSmartVault.connect(anon).mint(_A(800), anon.address)).to.be.revertedWith(
+      accessControlMessage(anon.address, null, "LP_ROLE")
+    );
+
+    // LP_ROLE can deposit and mint
+    await currency.connect(lp).approve(sharedSmartVault.address, _A(5000));
+    await sharedSmartVault.connect(lp).deposit(_A(1000), lp.address);
+    await sharedSmartVault.connect(lp).mint(_A(1000), lp.address);
+    expect(await sharedSmartVault.totalAssets()).to.equal(_A(2000));
+    expect(await currency.balanceOf(sv.address)).to.equal(_A(2000));
+
+    // Without LP_ROLE can't withdraw/mint
+    await expect(sharedSmartVault.connect(anon).withdraw(_A(800), lp.address, lp.address)).to.be.revertedWith(
+      accessControlMessage(anon.address, null, "LP_ROLE")
+    );
+    await expect(sharedSmartVault.connect(anon).redeem(_A(800), lp.address, lp.address)).to.be.revertedWith(
+      accessControlMessage(anon.address, null, "LP_ROLE")
+    );
+
+    // LP_ROLE can withdraw and redeem
+    await sharedSmartVault.connect(lp).withdraw(_A(1200), lp.address, lp.address);
+    await sharedSmartVault.connect(lp).redeem(_A(800), lp.address, lp.address);
+    expect(await sharedSmartVault.totalAssets()).to.equal(_A(0));
+    expect(await currency.balanceOf(sv.address)).to.equal(_A(0));
   });
 
   it("SharedSmartVault deposit and check balances", async () => {
-    const { sharedSmartVault, sv, currency } = await helpers.loadFixture(deployPoolFixture);
+    const { sharedSmartVault, sv, currency } = await helpers.loadFixture(deployFixtureSSVDeployed);
 
     expect(await sharedSmartVault.totalAssets()).to.equal(0);
 
@@ -294,7 +320,7 @@ describe("SharedSmartVault contract tests", function () {
   });
 
   it("SharedSmartVault withdraw and check balances", async () => {
-    const { sharedSmartVault, sv, currency } = await helpers.loadFixture(deployPoolFixture);
+    const { sharedSmartVault, sv, currency } = await helpers.loadFixture(deployFixtureSSVDeployed);
 
     expect(await sharedSmartVault.totalAssets()).to.equal(0);
     expect(await currency.balanceOf(lp.address)).to.equal(_A(10000));
@@ -316,7 +342,7 @@ describe("SharedSmartVault contract tests", function () {
   });
 
   it("SharedSmartVault deposit and invest in the investments", async () => {
-    const { sharedSmartVault, sv, inv, currency } = await helpers.loadFixture(deployPoolFixture);
+    const { sharedSmartVault, sv, inv, currency, SSVContract } = await helpers.loadFixture(deployFixtureSSVDeployed);
 
     await currency.connect(lp).approve(sharedSmartVault.address, _A(5000));
     await currency.connect(lp2).approve(sharedSmartVault.address, _A(5000));
@@ -334,9 +360,8 @@ describe("SharedSmartVault contract tests", function () {
     expect(await currency.balanceOf(inv.address)).to.equal(_A(2000));
 
     // try to remove the investment with funds
-    const SharedSmartVault = await ethers.getContractFactory("SharedSmartVault");
     await expect(sharedSmartVault.connect(remInv).removeInvestment(inv.address))
-      .to.be.revertedWithCustomError(SharedSmartVault, "InvestmentWithFunds")
+      .to.be.revertedWithCustomError(SSVContract, "InvestmentWithFunds")
       .withArgs(inv.address, _A(2000));
 
     // TotalAssets should be the same but the balance of the SV is 0 now
@@ -349,7 +374,7 @@ describe("SharedSmartVault contract tests", function () {
   });
 
   it("SharedSmartVault invest, deinvest and withdraw", async () => {
-    const { sharedSmartVault, sv, inv, currency } = await helpers.loadFixture(deployPoolFixture);
+    const { sharedSmartVault, sv, inv, currency } = await helpers.loadFixture(deployFixtureSSVDeployed);
 
     await currency.connect(lp).approve(sharedSmartVault.address, _A(5000));
     await currency.connect(lp2).approve(sharedSmartVault.address, _A(5000));
