@@ -10,12 +10,12 @@ const { AddressZero } = ethers.constants;
 
 describe("SharedSmartVault contract tests", function () {
   let _A;
-  let addInv, anon, cust, guardian, lp, lp2, owner, remInv;
+  let addInv, admin, anon, cust, guardian, lp, lp2, owner, remInv;
   const NAME = "Shared Vault";
   const SYMB = "ssVault";
 
   beforeEach(async () => {
-    [, lp, lp2, cust, addInv, remInv, owner, anon, guardian] = await ethers.getSigners();
+    [, lp, lp2, cust, addInv, remInv, owner, anon, guardian, admin] = await ethers.getSigners();
 
     _A = amountFunction(6);
   });
@@ -48,18 +48,18 @@ describe("SharedSmartVault contract tests", function () {
 
     const sharedSmartVault = await hre.upgrades.deployProxy(
       SSVContract,
-      [NAME, SYMB, collector.address, withdrawer.address, [inv.address], currency.address],
+      [NAME, SYMB, admin.address, collector.address, withdrawer.address, [inv.address], currency.address],
       {
         kind: "uups",
         constructorArgs: [sv.address],
       }
     );
 
-    await sharedSmartVault.grantRole(await sharedSmartVault.LP_ROLE(), lp.address);
-    await sharedSmartVault.grantRole(await sharedSmartVault.LP_ROLE(), lp2.address);
-    await sharedSmartVault.grantRole(await sharedSmartVault.ADD_INVESTMENT_ROLE(), addInv.address);
-    await sharedSmartVault.grantRole(await sharedSmartVault.REMOVE_INVESTMENT_ROLE(), remInv.address);
-    await sharedSmartVault.grantRole(await sharedSmartVault.GUARDIAN_ROLE(), guardian.address);
+    await sharedSmartVault.connect(admin).grantRole(await sharedSmartVault.LP_ROLE(), lp.address);
+    await sharedSmartVault.connect(admin).grantRole(await sharedSmartVault.LP_ROLE(), lp2.address);
+    await sharedSmartVault.connect(admin).grantRole(await sharedSmartVault.ADD_INVESTMENT_ROLE(), addInv.address);
+    await sharedSmartVault.connect(admin).grantRole(await sharedSmartVault.REMOVE_INVESTMENT_ROLE(), remInv.address);
+    await sharedSmartVault.connect(admin).grantRole(await sharedSmartVault.GUARDIAN_ROLE(), guardian.address);
 
     return { currency, sv, inv, collector, withdrawer, sharedSmartVault, SSVContract };
   }
@@ -85,7 +85,7 @@ describe("SharedSmartVault contract tests", function () {
     await expect(
       hre.upgrades.deployProxy(
         SSVContract,
-        [NAME, SYMB, collector.address, withdrawer.address, [inv.address], currency.address],
+        [NAME, SYMB, admin.address, collector.address, withdrawer.address, [inv.address], currency.address],
         {
           kind: "uups",
           constructorArgs: [AddressZero],
@@ -103,7 +103,7 @@ describe("SharedSmartVault contract tests", function () {
     await expect(
       hre.upgrades.deployProxy(
         SSVContract,
-        [NAME, SYMB, AddressZero, withdrawer.address, [inv.address], currency.address],
+        [NAME, SYMB, admin.address, AddressZero, withdrawer.address, [inv.address], currency.address],
         {
           kind: "uups",
           constructorArgs: [sv.address],
@@ -121,7 +121,7 @@ describe("SharedSmartVault contract tests", function () {
     await expect(
       hre.upgrades.deployProxy(
         SSVContract,
-        [NAME, SYMB, collector.address, AddressZero, [inv.address], currency.address],
+        [NAME, SYMB, admin.address, collector.address, AddressZero, [inv.address], currency.address],
         {
           kind: "uups",
           constructorArgs: [sv.address],
@@ -139,7 +139,7 @@ describe("SharedSmartVault contract tests", function () {
     await expect(
       hre.upgrades.deployProxy(
         SSVContract,
-        [NAME, SYMB, collector.address, withdrawer.address, [inv.address], AddressZero],
+        [NAME, SYMB, admin.address, collector.address, withdrawer.address, [inv.address], AddressZero],
         {
           kind: "uups",
           constructorArgs: [sv.address],
@@ -154,13 +154,36 @@ describe("SharedSmartVault contract tests", function () {
     const { collector, withdrawer, sv, currency, SSVContract } = await helpers.loadFixture(deployFixture);
     // EmptyInvestments
     await expect(
-      hre.upgrades.deployProxy(SSVContract, [NAME, SYMB, collector.address, withdrawer.address, [], currency.address], {
-        kind: "uups",
-        constructorArgs: [sv.address],
-      })
+      hre.upgrades.deployProxy(
+        SSVContract,
+        [NAME, SYMB, admin.address, collector.address, withdrawer.address, [], currency.address],
+        {
+          kind: "uups",
+          constructorArgs: [sv.address],
+        }
+      )
     )
       .to.be.revertedWithCustomError(SSVContract, "EmptyInvestments")
       .withArgs(0);
+  });
+
+  it("Only ADMIN can grant roles", async () => {
+    const { collector, withdrawer, sv, inv, SSVContract, currency } = await helpers.loadFixture(deployFixture);
+
+    const sharedSmartVault = await hre.upgrades.deployProxy(
+      SSVContract,
+      [NAME, SYMB, admin.address, collector.address, withdrawer.address, [inv.address], currency.address],
+      {
+        kind: "uups",
+        constructorArgs: [sv.address],
+      }
+    );
+
+    await expect(
+      sharedSmartVault.connect(anon).grantRole(await sharedSmartVault.LP_ROLE(), lp.address)
+    ).to.be.revertedWith(accessControlMessage(anon.address, null, "DEFAULT_ADMIN_ROLE"));
+
+    await sharedSmartVault.connect(admin).grantRole(await sharedSmartVault.LP_ROLE(), lp.address);
   });
 
   it("Only GUARDIAN_ROLE can upgrade", async () => {

@@ -59,18 +59,20 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
   function initialize(
     string memory name_,
     string memory symbol_,
+    address admin_,
     ICallable collector_,
     ICallable withdrawer_,
     IERC4626[] calldata investments_,
     IERC20Upgradeable asset_
   ) public virtual initializer {
-    __SharedSmartVault_init(name_, symbol_, collector_, withdrawer_, investments_, asset_);
+    __SharedSmartVault_init(name_, symbol_, admin_, collector_, withdrawer_, investments_, asset_);
   }
 
   // solhint-disable-next-line func-name-mixedcase
   function __SharedSmartVault_init(
     string memory name_,
     string memory symbol_,
+    address admin_,
     ICallable collector_,
     ICallable withdrawer_,
     IERC4626[] calldata investments_,
@@ -81,11 +83,12 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
     if (address(asset_) == address(0)) revert InvalidAsset(address(0));
     __ERC4626_init(asset_);
     __ERC20_init(name_, symbol_);
-    __SharedSmartVault_init_unchained(collector_, withdrawer_, investments_);
+    __SharedSmartVault_init_unchained(admin_, collector_, withdrawer_, investments_);
   }
 
   // solhint-disable-next-line func-name-mixedcase
   function __SharedSmartVault_init_unchained(
+    address admin_,
     ICallable collector_,
     ICallable withdrawer_,
     IERC4626[] calldata investments_
@@ -93,7 +96,7 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
     if (address(collector_) == address(0)) revert InvalidCollector(address(0));
     if (address(withdrawer_) == address(0)) revert InvalidWithdrawer(address(0));
     if (investments_.length == 0) revert EmptyInvestments(_investments.length);
-    _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
+    _setupRole(DEFAULT_ADMIN_ROLE, admin_);
     _collector = collector_;
     _withdrawer = withdrawer_;
     for (uint256 i = 0; i < investments_.length; i++) {
