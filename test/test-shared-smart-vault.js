@@ -1,5 +1,5 @@
 const { expect } = require("chai");
-const { amountFunction, accessControlMessage } = require("@ensuro/core/js/utils");
+const { amountFunction, accessControlMessage, getDefaultSigner } = require("@ensuro/core/js/utils");
 const { initCurrency } = require("@ensuro/core/js/test-utils");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
@@ -65,8 +65,9 @@ describe("SharedSmartVault contract tests", function () {
   }
 
   it("SharedSmartVault init", async () => {
-    const { collector, withdrawer, sv, inv, sharedSmartVault, currency } =
-      await helpers.loadFixture(deployFixtureSSVDeployed);
+    const { collector, withdrawer, sv, inv, sharedSmartVault, currency } = await helpers.loadFixture(
+      deployFixtureSSVDeployed
+    );
 
     expect(await sharedSmartVault.name()).to.equal(NAME);
     expect(await sharedSmartVault.symbol()).to.equal(SYMB);
@@ -179,11 +180,26 @@ describe("SharedSmartVault contract tests", function () {
       }
     );
 
+    const deployer = await getDefaultSigner(hre);
+
+    // Check the deployer account doesn't have grant role permission
+    await expect(sharedSmartVault.grantRole(await sharedSmartVault.LP_ROLE(), lp.address)).to.be.revertedWith(
+      accessControlMessage(deployer.address, null, "DEFAULT_ADMIN_ROLE")
+    );
+
     await expect(
       sharedSmartVault.connect(anon).grantRole(await sharedSmartVault.LP_ROLE(), lp.address)
     ).to.be.revertedWith(accessControlMessage(anon.address, null, "DEFAULT_ADMIN_ROLE"));
 
     await sharedSmartVault.connect(admin).grantRole(await sharedSmartVault.LP_ROLE(), lp.address);
+  });
+
+  it("Should never allow reinitialization", async () => {
+    const { sharedSmartVault, currency } = await helpers.loadFixture(deployFixtureSSVDeployed);
+
+    await expect(
+      sharedSmartVault.initialize("Another Name", "SYMB", lp.address, lp.address, lp.address, [], currency.address)
+    ).to.be.revertedWith("Initializable: contract is already initialized");
   });
 
   it("Only GUARDIAN_ROLE can upgrade", async () => {
@@ -362,6 +378,30 @@ describe("SharedSmartVault contract tests", function () {
     expect(await currency.balanceOf(lp.address)).to.equal(_A(10000));
     expect(await sharedSmartVault.totalAssets()).to.equal(_A(0));
     expect(await currency.balanceOf(sv.address)).to.equal(_A(0));
+  });
+
+  it("Fails on faulty collector", async () => {
+    const { sharedSmartVault, SSVContract, currency, collector } = await helpers.loadFixture(deployFixtureSSVDeployed);
+
+    await collector.setFaulty(true);
+
+    await currency.connect(lp).approve(sharedSmartVault.address, _A(5000));
+    await expect(sharedSmartVault.connect(lp).deposit(_A(1000), lp.address))
+      .to.be.revertedWithCustomError(SSVContract, "DifferentBalance")
+      .withArgs(_A(1000), _A(0));
+  });
+
+  it("Fails on faulty withdrawer", async () => {
+    const { sharedSmartVault, currency, withdrawer } = await helpers.loadFixture(deployFixtureSSVDeployed);
+
+    await withdrawer.setFaulty(true);
+
+    await currency.connect(lp).approve(sharedSmartVault.address, _A(5000));
+    await sharedSmartVault.connect(lp).deposit(_A(1000), lp.address);
+
+    await expect(sharedSmartVault.connect(lp).withdraw(_A(1000), lp.address, lp.address)).to.be.revertedWith(
+      "ERC20: transfer amount exceeds balance"
+    );
   });
 
   it("SharedSmartVault deposit and invest in the investments", async () => {

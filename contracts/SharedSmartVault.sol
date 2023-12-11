@@ -214,7 +214,7 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
     uint256 max = IERC20Metadata(asset()).balanceOf(_smartVault);
     uint256 userAssets = super.maxWithdraw(owner);
     for (uint256 i = 0; i < _investments.length; i++) {
-      max += _investments[i].maxWithdraw(owner);
+      max += _investments[i].maxWithdraw(_smartVault);
       if (userAssets <= max) return userAssets;
     }
     return max;
