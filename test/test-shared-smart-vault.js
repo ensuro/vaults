@@ -65,9 +65,8 @@ describe("SharedSmartVault contract tests", function () {
   }
 
   it("SharedSmartVault init", async () => {
-    const { collector, withdrawer, sv, inv, sharedSmartVault, currency } = await helpers.loadFixture(
-      deployFixtureSSVDeployed
-    );
+    const { collector, withdrawer, sv, inv, sharedSmartVault, currency } =
+      await helpers.loadFixture(deployFixtureSSVDeployed);
 
     expect(await sharedSmartVault.name()).to.equal(NAME);
     expect(await sharedSmartVault.symbol()).to.equal(SYMB);
@@ -431,9 +430,8 @@ describe("SharedSmartVault contract tests", function () {
     expect(await sharedSmartVault.totalAssets()).to.equal(_A(2000));
     expect(await currency.balanceOf(sv.address)).to.equal(_A(0));
 
-    // no liquid money
-    expect(await sharedSmartVault.maxWithdraw(lp.address)).to.equal(_A(0));
-    expect(await sharedSmartVault.maxWithdraw(lp2.address)).to.equal(_A(0));
+    expect(await sharedSmartVault.maxWithdraw(lp.address)).to.equal(_A(1000));
+    expect(await sharedSmartVault.maxWithdraw(lp2.address)).to.equal(_A(1000));
   });
 
   it("SharedSmartVault invest, deinvest and withdraw", async () => {
@@ -456,8 +454,8 @@ describe("SharedSmartVault contract tests", function () {
 
     // TotalAssets should be the same but the balance of the SV is 0 now
     expect(await sharedSmartVault.totalAssets()).to.equal(_A(2000));
-    expect(await sharedSmartVault.maxWithdraw(lp.address)).to.equal(_A(500));
-    expect(await sharedSmartVault.maxRedeem(lp2.address)).to.equal(_A(500));
+    expect(await sharedSmartVault.maxWithdraw(lp.address)).to.equal(_A(1000));
+    expect(await sharedSmartVault.maxRedeem(lp2.address)).to.equal(_A(1000));
 
     await sv.deinvest(inv.address, _A(500));
     expect(await inv.totalAssets()).to.equal(_A(1000));

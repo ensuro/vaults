@@ -12,7 +12,7 @@ contract InvestmentMock is ERC4626 {
     string memory name_,
     string memory symbol_,
     IERC20Metadata asset_
-  ) ERC20(name_, symbol_) ERC4626(asset_) {}
+  ) ERC20(name_, symbol_) ERC4626(asset_) {} // solhint-disable-line no-empty-blocks
 
   /** @dev See {IERC4262-totalAssets}. */
   function totalAssets() public view virtual override returns (uint256) {
