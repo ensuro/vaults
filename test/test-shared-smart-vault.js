@@ -462,4 +462,24 @@ describe("SharedSmartVault contract tests", function () {
     expect(await currency.balanceOf(inv.address)).to.equal(_A(1000));
     expect(await currency.balanceOf(sv.address)).to.equal(_A(1000));
   });
+
+  it("SharedSmartVault with earnings", async () => {
+    const { sharedSmartVault, sv, inv, currency } = await helpers.loadFixture(deployFixtureSSVDeployed);
+
+    await currency.connect(lp).approve(sharedSmartVault.address, _A(100));
+    await currency.connect(lp2).approve(sharedSmartVault.address, _A(80));
+    await currency.connect(anon).approve(inv.address, _A(80));
+
+    await sharedSmartVault.connect(lp).deposit(_A(100), lp.address);
+    await sharedSmartVault.connect(lp2).deposit(_A(80), lp2.address);
+
+    expect(await sharedSmartVault.maxWithdraw(lp.address)).to.equal(_A(100));
+    expect(await sharedSmartVault.maxWithdraw(lp2.address)).to.equal(_A(80));
+
+    await sv.invest(inv.address, currency.address, _A(180));
+
+    await currency.connect(owner).transfer(sv.address, _A(18));
+    expect(await sharedSmartVault.maxWithdraw(lp.address)).to.be.closeTo(_A(110), _A(0.01));
+    expect(await sharedSmartVault.maxWithdraw(lp2.address)).to.be.closeTo(_A(88), _A(0.01));
+  });
 });
