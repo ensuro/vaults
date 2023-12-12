@@ -452,7 +452,7 @@ describe("SharedSmartVault contract tests", function () {
     expect(await currency.balanceOf(inv.address)).to.equal(_A(1500));
     expect(await currency.balanceOf(sv.address)).to.equal(_A(500));
 
-    // TotalAssets should be the same but the balance of the SV is 0 now
+    // TotalAssets should be the same but the balance of the SV is 500 now
     expect(await sharedSmartVault.totalAssets()).to.equal(_A(2000));
     expect(await sharedSmartVault.maxWithdraw(lp.address)).to.equal(_A(1000));
     expect(await sharedSmartVault.maxRedeem(lp2.address)).to.equal(_A(1000));
@@ -461,6 +461,44 @@ describe("SharedSmartVault contract tests", function () {
     expect(await inv.totalAssets()).to.equal(_A(1000));
     expect(await currency.balanceOf(inv.address)).to.equal(_A(1000));
     expect(await currency.balanceOf(sv.address)).to.equal(_A(1000));
+  });
+
+  it("SharedSmartVault with notLiquidFunds", async () => {
+    const { sharedSmartVault, sv, inv, currency } = await helpers.loadFixture(deployFixtureSSVDeployed);
+
+    sv.setInvestments([inv.address]);
+
+    await currency.connect(lp).approve(sharedSmartVault.address, _A(1000));
+    await currency.connect(lp2).approve(sharedSmartVault.address, _A(1000));
+    await sharedSmartVault.connect(lp).deposit(_A(1000), lp.address);
+    await sharedSmartVault.connect(lp2).deposit(_A(1000), lp2.address);
+    expect(await sharedSmartVault.totalAssets()).to.equal(_A(2000));
+    expect(await currency.balanceOf(sv.address)).to.equal(_A(2000));
+    expect(await sharedSmartVault.maxWithdraw(lp.address)).to.equal(_A(1000));
+    expect(await sharedSmartVault.maxWithdraw(lp2.address)).to.equal(_A(1000));
+
+    // SV invest only 1500 in the investment
+    await sv.invest(inv.address, currency.address, _A(1500));
+    expect(await inv.totalAssets()).to.equal(_A(1500));
+    expect(await currency.balanceOf(inv.address)).to.equal(_A(1500));
+    expect(await currency.balanceOf(sv.address)).to.equal(_A(500));
+
+    // TotalAssets should be the same but the balance of the SV is 500 now
+    expect(await sharedSmartVault.totalAssets()).to.equal(_A(2000));
+    expect(await currency.balanceOf(sv.address)).to.equal(_A(500));
+    expect(await sharedSmartVault.maxWithdraw(lp.address)).to.equal(_A(1000));
+    expect(await sharedSmartVault.maxRedeem(lp2.address)).to.equal(_A(1000));
+
+    await inv.setNotLiquidFunds(_A(1500)); // no liquid funds
+
+    expect(await inv.totalAssets()).to.equal(_A(1500)); // don't change
+
+    expect(await sharedSmartVault.maxWithdraw(lp.address)).to.equal(_A(500));
+    expect(await sharedSmartVault.maxRedeem(lp2.address)).to.equal(_A(500));
+
+    await inv.setNotLiquidFunds(_A(1200)); // liquid: 300
+
+    await sharedSmartVault.connect(lp).withdraw(_A(800), lp.address, lp.address);
   });
 
   it("SharedSmartVault with earnings", async () => {
