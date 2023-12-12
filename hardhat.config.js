@@ -19,4 +19,7 @@ module.exports = {
     runOnCompile: false,
     disambiguatePaths: false,
   },
+  dependencyCompiler: {
+    paths: ["@ensuro/core/contracts/mocks/TestCurrency.sol"],
+  },
 };
