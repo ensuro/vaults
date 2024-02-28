@@ -141,29 +141,18 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
   /**
    * @dev See {IERC4626-mint}.
    */
-  function mint(
-    uint256 assets,
-    address receiver
-  ) public virtual override onlyRole(LP_ROLE) returns (uint256) {
+  function mint(uint256 assets, address receiver) public virtual override onlyRole(LP_ROLE) returns (uint256) {
     return super.mint(assets, receiver);
   }
 
   /**
    * @dev See {IERC4626-deposit}.
    */
-  function deposit(
-    uint256 assets,
-    address receiver
-  ) public virtual override onlyRole(LP_ROLE) returns (uint256) {
+  function deposit(uint256 assets, address receiver) public virtual override onlyRole(LP_ROLE) returns (uint256) {
     return super.deposit(assets, receiver);
   }
 
-  function _deposit(
-    address caller,
-    address receiver,
-    uint256 assets,
-    uint256 shares
-  ) internal virtual override {
+  function _deposit(address caller, address receiver, uint256 assets, uint256 shares) internal virtual override {
     uint256 prevBalance = _balance();
     // Transfers the assets from the caller and mints the shares
     super._deposit(caller, receiver, assets, shares);
@@ -251,8 +240,7 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
 
   function _addInvestment(IERC4626 investment_) internal {
     if (address(investment_) == address(0)) revert InvalidInvestment(address(0));
-    if (getInvestmentIndex(investment_) != type(uint256).max)
-      revert InvestmentAlreadyExists(address(investment_));
+    if (getInvestmentIndex(investment_) != type(uint256).max) revert InvestmentAlreadyExists(address(investment_));
     if (investment_.asset() != asset()) revert DifferentAsset(investment_.asset(), asset());
 
     _investments.push(investment_);
@@ -270,8 +258,7 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
     if (_investments.length == 1) revert EmptyInvestments(_investments.length);
     uint256 index = getInvestmentIndex(investment_);
     if (index == type(uint256).max) revert InvestmentNotFound(address(investment_));
-    if (index != _investments.length - 1)
-      _investments[index] = _investments[_investments.length - 1];
+    if (index != _investments.length - 1) _investments[index] = _investments[_investments.length - 1];
     _investments.pop();
     emit InvestmentRemoved(investment_);
   }
