@@ -1,9 +1,5 @@
 const { expect } = require("chai");
-const {
-  amountFunction,
-  _W,
-  getRole,
-} = require("@ensuro/core/js/utils");
+const { amountFunction, _W, getRole, accessControlMessage } = require("@ensuro/core/js/utils");
 const { initForkCurrency, setupChain } = require("@ensuro/core/js/test-utils");
 const { buildUniswapConfig } = require("@ensuro/swaplibrary/js/utils");
 const { anyUint } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
@@ -54,7 +50,7 @@ describe("CompoundV3ERC4626 contract tests", function () {
         SwapLibrary: library.target,
       },
     });
-    const swapConfig = buildUniswapConfig(_W("0.01"), FEETIER, ADDRESSES.UNISWAP);
+    const swapConfig = buildUniswapConfig(_W("0.00001"), FEETIER, ADDRESSES.UNISWAP);
     const adminAddr = await ethers.resolveAddress(admin);
     const vault = await hre.upgrades.deployProxy(CompoundV3ERC4626, [NAME, SYMB, adminAddr, swapConfig], {
       kind: "uups",
@@ -172,5 +168,81 @@ describe("CompoundV3ERC4626 contract tests", function () {
 
     expect(await currency.balanceOf(lp)).to.closeTo(_A("10009.522"), CENT);
     expect(await currency.balanceOf(lp2)).to.closeTo(_A("10000"), CENT);
+  });
+
+  it("Checks rewards can be harvested", async () => {
+    const { currency, vault, admin, anon, lp, lp2 } = await helpers.loadFixture(setUp);
+
+    await expect(vault.connect(lp).mint(_A(1000), lp)).not.to.be.reverted;
+    await expect(vault.connect(lp2).mint(_A(2000), lp2)).not.to.be.reverted;
+
+    expect(await vault.totalAssets()).to.be.closeTo(_A(3000), MCENT);
+
+    await expect(vault.connect(anon).harvestRewards(_A(100))).to.be.revertedWith(
+      accessControlMessage(anon, null, "HARVEST_ROLE")
+    );
+
+    await vault.connect(admin).grantRole(getRole("HARVEST_ROLE"), anon);
+
+    await expect(vault.connect(anon).harvestRewards(_A(100))).to.be.revertedWith("AS");
+
+    await helpers.time.increase(MONTH);
+    const assets = await vault.totalAssets();
+    expect(assets).to.be.closeTo(_A("3028.53"), CENT);
+
+    // Dex Rate 0.011833165 - MaxSlippage initially ~0%
+    await expect(vault.connect(anon).harvestRewards(_W("0.011"))).to.be.revertedWith("Too little received");
+
+    await expect(vault.connect(anon).harvestRewards(_W("0.011833165")))
+      .to.emit(vault, "RewardsClaimed")
+      .withArgs(ADDRESSES.COMP, _W("0.126432"), _A("10.684546"))
+      .to.emit(currency, "Transfer")
+      .withArgs(vault, ADDRESSES.cUSDCv3, _A("10.684546"));
+
+    expect(await vault.totalAssets()).to.be.closeTo(assets + _A("10.684546"), CENT);
+
+    // No new shares minted, so rewards are accrued for current LPs
+    expect(await vault.totalSupply()).to.be.equal(_A(3000));
+  });
+
+  it("Checks only authorized user can change swap config", async () => {
+    const { currency, vault, admin, anon, lp, swapConfig } = await helpers.loadFixture(setUp);
+
+    expect(await vault.getSwapConfig()).to.deep.equal(swapConfig);
+    await expect(vault.connect(lp).mint(_A(3000), lp)).not.to.be.reverted;
+
+    await vault.connect(admin).grantRole(getRole("HARVEST_ROLE"), anon);
+
+    await helpers.time.increase(MONTH);
+    const assets = await vault.totalAssets();
+    expect(assets).to.be.closeTo(_A("3028.53"), CENT);
+
+    // Dex Rate 0.011833165 - MaxSlippage initially ~0%
+    await expect(vault.connect(anon).harvestRewards(_W("0.0118"))).to.be.revertedWith("Too little received");
+
+    await expect(vault.connect(anon).setSwapConfig(swapConfig)).to.be.revertedWith(
+      accessControlMessage(anon, null, "SWAP_ADMIN_ROLE")
+    );
+
+    await vault.connect(admin).grantRole(getRole("SWAP_ADMIN_ROLE"), anon);
+
+    // Check validates new config
+    await expect(
+      vault.connect(anon).setSwapConfig(buildUniswapConfig(0, FEETIER, ADDRESSES.UNISWAP))
+    ).to.be.revertedWith("SwapLibrary: maxSlippage cannot be zero");
+
+    const newSwapConfig = buildUniswapConfig(_W("0.05"), FEETIER, ADDRESSES.UNISWAP);
+
+    await expect(vault.connect(anon).setSwapConfig(newSwapConfig))
+      .to.emit(vault, "SwapConfigChanged")
+      .withArgs(swapConfig, newSwapConfig);
+
+    await expect(vault.connect(anon).harvestRewards(_W("0.0118")))
+      .to.emit(vault, "RewardsClaimed")
+      .withArgs(ADDRESSES.COMP, _W("0.126432"), _A("10.684546"))
+      .to.emit(currency, "Transfer")
+      .withArgs(vault, ADDRESSES.cUSDCv3, _A("10.684546"));
+
+    expect(await vault.totalAssets()).to.be.closeTo(assets + _A("10.684546"), CENT);
   });
 });

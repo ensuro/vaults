@@ -19,7 +19,7 @@
   },
   "dependencies": {
     "@ensuro/core": "^2.8.0-beta1",
-    "@ensuro/swaplibrary": "^0.1.0",
+    "@ensuro/swaplibrary": "^0.1.1",
     "@openzeppelin/contracts": "~4.9.2",
     "@openzeppelin/contracts-upgradeable": "~4.9.2",
     "@uniswap/v3-periphery": "^1.4.4",

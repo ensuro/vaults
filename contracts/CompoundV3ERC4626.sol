@@ -6,7 +6,6 @@ import {ICometRewards} from "./interfaces/ICometRewards.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {MathUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/math/MathUpgradeable.sol";
 import {SwapLibrary} from "@ensuro/swaplibrary/contracts/SwapLibrary.sol";
 import {PermissionedERC4626} from "./PermissionedERC4626.sol";
 
@@ -21,13 +20,18 @@ contract CompoundV3ERC4626 is PermissionedERC4626 {
   using SwapLibrary for SwapLibrary.SwapConfig;
 
   bytes32 public constant HARVEST_ROLE = keccak256("HARVEST_ROLE");
+  bytes32 public constant SWAP_ADMIN_ROLE = keccak256("SWAP_ADMIN_ROLE");
 
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   ICompoundV3 internal immutable _cToken;
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   ICometRewards internal immutable _rewardsManager;
 
-  SwapLibrary.SwapConfig _swapConfig;
+  SwapLibrary.SwapConfig internal _swapConfig;
+
+  event RewardsClaimed(address token, uint256 rewards, uint256 receivedInAsset);
+
+  event SwapConfigChanged(SwapLibrary.SwapConfig oldConfig, SwapLibrary.SwapConfig newConfig);
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(ICompoundV3 cToken_, ICometRewards rewardsManager_) {
@@ -134,6 +138,17 @@ contract CompoundV3ERC4626 is PermissionedERC4626 {
     uint256 earned = IERC20Metadata(reward).balanceOf(address(this));
     uint256 reinvestAmount = _swapConfig.exactInput(reward, asset(), earned, price);
     _supply(reinvestAmount);
+    emit RewardsClaimed(reward, earned, reinvestAmount);
+  }
+
+  function setSwapConfig(SwapLibrary.SwapConfig calldata swapConfig_) external onlyRole(SWAP_ADMIN_ROLE) {
+    swapConfig_.validate();
+    emit SwapConfigChanged(_swapConfig, swapConfig_);
+    _swapConfig = swapConfig_;
+  }
+
+  function getSwapConfig() public view returns (SwapLibrary.SwapConfig memory) {
+    return _swapConfig;
   }
 
   /**
@@ -141,5 +156,5 @@ contract CompoundV3ERC4626 is PermissionedERC4626 {
    * variables without shifting down storage in the inheritance chain.
    * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
    */
-  uint256[48] private __gap;
+  uint256[47] private __gap;
 }

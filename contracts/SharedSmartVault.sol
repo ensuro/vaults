@@ -128,6 +128,7 @@ contract SharedSmartVault is PermissionedERC4626 {
     uint256 prevBalance = _balance();
     // Transfers the assets from the caller and mints the shares
     super._deposit(caller, receiver, assets, shares);
+    // solhint-disable-next-line avoid-low-level-calls
     _collector.call(asset(), assets);
     uint256 balance = _balance();
     // Checks the collector took all the received assets from this contract
@@ -141,6 +142,7 @@ contract SharedSmartVault is PermissionedERC4626 {
     uint256 assets,
     uint256 shares
   ) internal virtual override {
+    // solhint-disable-next-line avoid-low-level-calls
     _withdrawer.call(asset(), assets);
     super._withdraw(caller, receiver, owner, assets, shares);
   }
@@ -219,5 +221,5 @@ contract SharedSmartVault is PermissionedERC4626 {
    * variables without shifting down storage in the inheritance chain.
    * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
    */
-  uint256[48] private __gap;
+  uint256[47] private __gap;
 }

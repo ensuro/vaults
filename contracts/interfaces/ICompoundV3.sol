@@ -18,6 +18,6 @@ interface ICompoundV3 is IERC20Metadata {
   function isSupplyPaused() external view returns (bool);
   function isWithdrawPaused() external view returns (bool);
 
-  function withdraw(address asset, uint amount) external;
-  function supply(address asset, uint amount) external;
+  function withdraw(address asset, uint256 amount) external;
+  function supply(address asset, uint256 amount) external;
 }
