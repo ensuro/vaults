@@ -43,38 +43,18 @@ contract PermissionedERC4626 is AccessControlUpgradeable, UUPSUpgradeable, ERC46
   function _authorizeUpgrade(address newImpl) internal view override onlyRole(GUARDIAN_ROLE) {}
 
   /**
-   * @dev See {IERC4626-mint}.
+   * @dev See {IERC4626-maxDeposit}.
    */
-  function mint(uint256 assets, address receiver) public virtual override onlyRole(LP_ROLE) returns (uint256) {
-    return super.mint(assets, receiver);
+  function maxDeposit(address owner) public view virtual override returns (uint256) {
+    if (!hasRole(LP_ROLE, owner)) return 0;
+    return super.maxDeposit(owner);
   }
 
   /**
-   * @dev See {IERC4626-deposit}.
+   * @dev See {IERC4626-maxMint}.
    */
-  function deposit(uint256 assets, address receiver) public virtual override onlyRole(LP_ROLE) returns (uint256) {
-    return super.deposit(assets, receiver);
-  }
-
-  /**
-   * @dev See {IERC4626-withdraw}.
-   */
-  function withdraw(
-    uint256 assets,
-    address receiver,
-    address owner
-  ) public virtual override onlyRole(LP_ROLE) returns (uint256) {
-    return super.withdraw(assets, receiver, owner);
-  }
-
-  /**
-   * @dev See {IERC4626-redeem}.
-   */
-  function redeem(
-    uint256 assets,
-    address receiver,
-    address owner
-  ) public virtual override onlyRole(LP_ROLE) returns (uint256) {
-    return super.withdraw(assets, receiver, owner);
+  function maxMint(address owner) public view virtual override returns (uint256) {
+    if (!hasRole(LP_ROLE, owner)) return 0;
+    return super.maxMint(owner);
   }
 }

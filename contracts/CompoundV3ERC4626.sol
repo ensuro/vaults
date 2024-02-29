@@ -24,6 +24,7 @@ contract CompoundV3ERC4626 is PermissionedERC4626 {
 
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   ICompoundV3 internal immutable _cToken;
+  /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   ICometRewards internal immutable _rewardsManager;
 
   SwapLibrary.SwapConfig _swapConfig;

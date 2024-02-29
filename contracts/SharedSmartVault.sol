@@ -124,20 +124,6 @@ contract SharedSmartVault is PermissionedERC4626 {
     return _investments[index];
   }
 
-  /**
-   * @dev See {IERC4626-mint}.
-   */
-  function mint(uint256 assets, address receiver) public virtual override onlyRole(LP_ROLE) returns (uint256) {
-    return super.mint(assets, receiver);
-  }
-
-  /**
-   * @dev See {IERC4626-deposit}.
-   */
-  function deposit(uint256 assets, address receiver) public virtual override onlyRole(LP_ROLE) returns (uint256) {
-    return super.deposit(assets, receiver);
-  }
-
   function _deposit(address caller, address receiver, uint256 assets, uint256 shares) internal virtual override {
     uint256 prevBalance = _balance();
     // Transfers the assets from the caller and mints the shares
@@ -146,28 +132,6 @@ contract SharedSmartVault is PermissionedERC4626 {
     uint256 balance = _balance();
     // Checks the collector took all the received assets from this contract
     if (balance != prevBalance) revert DifferentBalance(balance, prevBalance);
-  }
-
-  /**
-   * @dev See {IERC4626-withdraw}.
-   */
-  function withdraw(
-    uint256 assets,
-    address receiver,
-    address owner
-  ) public virtual override onlyRole(LP_ROLE) returns (uint256) {
-    return super.withdraw(assets, receiver, owner);
-  }
-
-  /**
-   * @dev See {IERC4626-redeem}.
-   */
-  function redeem(
-    uint256 assets,
-    address receiver,
-    address owner
-  ) public virtual override onlyRole(LP_ROLE) returns (uint256) {
-    return super.withdraw(assets, receiver, owner);
   }
 
   function _withdraw(
@@ -186,8 +150,9 @@ contract SharedSmartVault is PermissionedERC4626 {
    * Is the minimum between the total assets of the user and the maximum amount withdrawable from the smart vault
    */
   function maxWithdraw(address owner) public view virtual override returns (uint256) {
-    uint256 max = IERC20Metadata(asset()).balanceOf(_smartVault);
     uint256 userAssets = super.maxWithdraw(owner);
+    if (userAssets == 0) return 0;
+    uint256 max = IERC20Metadata(asset()).balanceOf(_smartVault);
     for (uint256 i = 0; i < _investments.length; i++) {
       max += _investments[i].maxWithdraw(_smartVault);
       if (userAssets <= max) return userAssets;

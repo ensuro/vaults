@@ -350,11 +350,9 @@ describe("SharedSmartVault contract tests", function () {
 
     // Without LP_ROLE can't deposit/mint
     await expect(sharedSmartVault.connect(anon).deposit(_A(800), anon)).to.be.revertedWith(
-      accessControlMessage(anon, null, "LP_ROLE")
+      "ERC4626: deposit more than max"
     );
-    await expect(sharedSmartVault.connect(anon).mint(_A(800), anon)).to.be.revertedWith(
-      accessControlMessage(anon, null, "LP_ROLE")
-    );
+    await expect(sharedSmartVault.connect(anon).mint(_A(800), anon)).to.be.revertedWith("ERC4626: mint more than max");
 
     // LP_ROLE can deposit and mint
     await currency.connect(lp).approve(sharedSmartVault, _A(5000));
@@ -363,17 +361,20 @@ describe("SharedSmartVault contract tests", function () {
     expect(await sharedSmartVault.totalAssets()).to.equal(_A(2000));
     expect(await currency.balanceOf(sv)).to.equal(_A(2000));
 
-    // Without LP_ROLE can't withdraw/mint
+    // Anons can redeem on behalf of lp if have allowance
     await expect(sharedSmartVault.connect(anon).withdraw(_A(800), lp, lp)).to.be.revertedWith(
-      accessControlMessage(anon, null, "LP_ROLE")
+      "ERC20: insufficient allowance"
     );
     await expect(sharedSmartVault.connect(anon).redeem(_A(800), lp, lp)).to.be.revertedWith(
-      accessControlMessage(anon, null, "LP_ROLE")
+      "ERC20: insufficient allowance"
     );
+
+    await sharedSmartVault.connect(lp).approve(anon, _A(800));
+    await sharedSmartVault.connect(anon).redeem(_A(800), anon, lp);
+    expect(await currency.balanceOf(anon)).to.be.equal(_A(800));
 
     // LP_ROLE can withdraw and redeem
     await sharedSmartVault.connect(lp).withdraw(_A(1200), lp, lp);
-    await sharedSmartVault.connect(lp).redeem(_A(800), lp, lp);
     expect(await sharedSmartVault.totalAssets()).to.equal(_A(0));
     expect(await currency.balanceOf(sv)).to.equal(_A(0));
   });
