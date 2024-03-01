@@ -10,7 +10,10 @@ import {SwapLibrary} from "@ensuro/swaplibrary/contracts/SwapLibrary.sol";
 import {PermissionedERC4626} from "./PermissionedERC4626.sol";
 
 /**
- * @title SharedSmartVault
+ * @title CompoundV3ERC4626
+ * @dev Vault that invests/deinvests into CompoundV3 on each deposit/withdraw. Also, has a method to claim the rewards,
+ *      swap them, and reinvests the result into CompoundV3.
+ *      Entering or exiting the vault is permissioned, requires LP_ROLE
  *
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
@@ -41,7 +44,7 @@ contract CompoundV3ERC4626 is PermissionedERC4626 {
   }
 
   /**
-   * @dev Initializes the SharedSmartVault
+   * @dev Initializes the CompoundV3ERC4626
    */
   function initialize(
     string memory name_,

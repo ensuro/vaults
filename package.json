@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "scripts": {
     "prettier": "prettier --write 'contracts/**/*.sol' --write 'test/**/*.js'",
-    "solhint": "solhint 'contracts/**/*.sol'"
+    "solhint": "solhint -w0 'contracts/**/*.sol'"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^4.0.0",
