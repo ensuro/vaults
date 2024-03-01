@@ -17,7 +17,24 @@ const ADDRESSES = {
   cUSDCv3: "0xF25212E676D1F7F89Cd72fFEe66158f541246445",
   REWARDS: "0x45939657d1CA34A8FA39A924B71D28Fe8431e581",
   COMP: "0x8505b9d2254A7Ae468c0E9dd10Ccea3A837aef5c",
+  cUSDCv3_GUARDIAN: "0x8Ab717CAC3CbC4934E63825B88442F5810aAF6e5",
 };
+
+const CometABI = [
+  {
+    inputs: [
+      { internalType: "bool", name: "supplyPaused", type: "bool" },
+      { internalType: "bool", name: "transferPaused", type: "bool" },
+      { internalType: "bool", name: "withdrawPaused", type: "bool" },
+      { internalType: "bool", name: "absorbPaused", type: "bool" },
+      { internalType: "bool", name: "buyPaused", type: "bool" },
+    ],
+    name: "pause",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+];
 
 const CURRENCY_DECIMALS = 6;
 const _A = amountFunction(CURRENCY_DECIMALS);
@@ -27,6 +44,7 @@ const CENT = _A("0.01");
 const HOUR = 3600;
 const DAY = HOUR * 24;
 const MONTH = DAY * 30;
+const INITIAL = 10000;
 
 describe("CompoundV3ERC4626 contract tests", function () {
   const NAME = "Compound USDCv3 Vault";
@@ -40,7 +58,7 @@ describe("CompoundV3ERC4626 contract tests", function () {
 
   async function setUp() {
     const [, lp, lp2, anon, guardian, admin] = await ethers.getSigners();
-    const currency = await initForkCurrency(ADDRESSES.USDC, ADDRESSES.USDCWhale, [lp, lp2], [_A(10000), _A(10000)]);
+    const currency = await initForkCurrency(ADDRESSES.USDC, ADDRESSES.USDCWhale, [lp, lp2], [_A(INITIAL), _A(INITIAL)]);
 
     const SwapLibrary = await ethers.getContractFactory("SwapLibrary");
     const library = await SwapLibrary.deploy();
@@ -167,7 +185,7 @@ describe("CompoundV3ERC4626 contract tests", function () {
     expect(await vault.totalAssets()).to.be.equal(0);
 
     expect(await currency.balanceOf(lp)).to.closeTo(_A("10009.522"), CENT);
-    expect(await currency.balanceOf(lp2)).to.closeTo(_A("10000"), CENT);
+    expect(await currency.balanceOf(lp2)).to.closeTo(_A(INITIAL), CENT);
   });
 
   it("Checks rewards can be harvested", async () => {
@@ -244,5 +262,52 @@ describe("CompoundV3ERC4626 contract tests", function () {
       .withArgs(vault, ADDRESSES.cUSDCv3, _A("10.684546"));
 
     expect(await vault.totalAssets()).to.be.closeTo(assets + _A("10.684546"), CENT);
+  });
+
+  it("Checks can't deposit or withdraw when Compound is paued", async () => {
+    const { vault, lp, currency } = await helpers.loadFixture(setUp);
+
+    await helpers.impersonateAccount(ADDRESSES.cUSDCv3_GUARDIAN);
+    await helpers.setBalance(ADDRESSES.cUSDCv3_GUARDIAN, ethers.parseEther("100"));
+    const compGuardian = await ethers.getSigner(ADDRESSES.cUSDCv3_GUARDIAN);
+
+    const cUSDCv3 = await ethers.getContractAt(CometABI, ADDRESSES.cUSDCv3);
+
+    expect(await vault.maxMint(lp)).to.equal(MaxUint256);
+    expect(await vault.maxDeposit(lp)).to.equal(MaxUint256);
+
+    // If I pause supply, maxMint / maxDeposit becomes 0 and can't deposit or mint
+    await cUSDCv3.connect(compGuardian).pause(true, false, false, false, false);
+
+    expect(await vault.maxMint(lp)).to.equal(0);
+    expect(await vault.maxDeposit(lp)).to.equal(0);
+    await expect(vault.connect(lp).mint(_A(3000), lp)).to.be.revertedWith("ERC4626: mint more than max");
+    await expect(vault.connect(lp).deposit(_A(3000), lp)).to.be.revertedWith("ERC4626: deposit more than max");
+
+    // Then I unpause deposit
+    await cUSDCv3.connect(compGuardian).pause(false, false, false, false, false);
+
+    await expect(vault.connect(lp).mint(_A(3000), lp)).not.to.be.reverted;
+
+    expect(await vault.totalAssets()).to.closeTo(_A(3000), MCENT);
+    expect(await vault.maxRedeem(lp)).to.equal(_A(3000));
+    expect(await vault.maxWithdraw(lp)).to.closeTo(_A(3000), MCENT);
+
+    // If I pause withdraw, maxRedeem / maxWithdraw becomes 0 and can't withdraw or redeem
+    await cUSDCv3.connect(compGuardian).pause(false, false, true, false, false);
+
+    expect(await vault.maxRedeem(lp)).to.equal(0);
+    expect(await vault.maxWithdraw(lp)).to.equal(0);
+
+    await expect(vault.connect(lp).redeem(_A(1000), lp, lp)).to.be.revertedWith("ERC4626: redeem more than max");
+    await expect(vault.connect(lp).withdraw(_A(1000), lp, lp)).to.be.revertedWith("ERC4626: withdraw more than max");
+
+    // Then I unpause everythin
+    await cUSDCv3.connect(compGuardian).pause(false, false, false, false, false);
+
+    await expect(vault.connect(lp).redeem(_A(3000), lp, lp)).not.to.be.reverted;
+    expect(await vault.totalAssets()).to.closeTo(0, MCENT);
+    // Check LP has more or less the same initial funds
+    expect(await currency.balanceOf(lp)).to.closeTo(_A(INITIAL), MCENT * 10n);
   });
 });

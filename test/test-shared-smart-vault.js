@@ -404,6 +404,7 @@ describe("SharedSmartVault contract tests", function () {
     expect(await sharedSmartVault.totalAssets()).to.equal(_A(1000));
     expect(await currency.balanceOf(sv)).to.equal(_A(1000));
 
+    expect(await sharedSmartVault.maxWithdraw(anon)).to.equal(_A(0));
     expect(await sharedSmartVault.maxWithdraw(lp)).to.equal(_A(1000));
     expect(await sharedSmartVault.maxRedeem(lp)).to.equal(_A(1000));
     await sharedSmartVault.connect(lp).withdraw(_A(1000), lp, lp);
