@@ -1,15 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity 0.8.16;
 
-import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
-import {ERC4626Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
 import {ICallable} from "./interfaces/ICallable.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {MathUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/math/MathUpgradeable.sol";
+import {PermissionedERC4626} from "./PermissionedERC4626.sol";
 
 /**
  * @title SharedSmartVault
@@ -17,11 +15,9 @@ import {MathUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/math/Ma
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
-contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626Upgradeable {
+contract SharedSmartVault is PermissionedERC4626 {
   using SafeERC20 for IERC20Metadata;
 
-  bytes32 public constant LP_ROLE = keccak256("LP_ROLE");
-  bytes32 public constant GUARDIAN_ROLE = keccak256("GUARDIAN_ROLE");
   bytes32 public constant ADD_INVESTMENT_ROLE = keccak256("ADD_INVESTMENT_ROLE");
   bytes32 public constant REMOVE_INVESTMENT_ROLE = keccak256("REMOVE_INVESTMENT_ROLE");
 
@@ -35,7 +31,6 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
   event InvestmentRemoved(IERC4626 investment);
 
   error InvalidSmartVault(address smartVault);
-  error InvalidAsset(address asset);
   error InvalidCollector(address collector);
   error InvalidWithdrawer(address withdrawer);
   error InvalidInvestment(address investment);
@@ -78,17 +73,12 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
     IERC4626[] calldata investments_,
     IERC20Upgradeable asset_
   ) internal onlyInitializing {
-    __UUPSUpgradeable_init();
-    __AccessControl_init();
-    if (address(asset_) == address(0)) revert InvalidAsset(address(0));
-    __ERC4626_init(asset_);
-    __ERC20_init(name_, symbol_);
-    __SharedSmartVault_init_unchained(admin_, collector_, withdrawer_, investments_);
+    __PermissionedERC4626_init(name_, symbol_, admin_, asset_);
+    __SharedSmartVault_init_unchained(collector_, withdrawer_, investments_);
   }
 
   // solhint-disable-next-line func-name-mixedcase
   function __SharedSmartVault_init_unchained(
-    address admin_,
     ICallable collector_,
     ICallable withdrawer_,
     IERC4626[] calldata investments_
@@ -96,7 +86,6 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
     if (address(collector_) == address(0)) revert InvalidCollector(address(0));
     if (address(withdrawer_) == address(0)) revert InvalidWithdrawer(address(0));
     if (investments_.length == 0) revert EmptyInvestments(_investments.length);
-    _setupRole(DEFAULT_ADMIN_ROLE, admin_);
     _collector = collector_;
     _withdrawer = withdrawer_;
     for (uint256 i = 0; i < investments_.length; i++) {
@@ -105,9 +94,6 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
     // Infinite approval to the SmartVault
     IERC20Metadata(asset()).approve(_smartVault, type(uint256).max);
   }
-
-  // solhint-disable-next-line no-empty-blocks
-  function _authorizeUpgrade(address newImpl) internal view override onlyRole(GUARDIAN_ROLE) {}
 
   function _balance() internal view returns (uint256) {
     return IERC20Metadata(asset()).balanceOf(address(this));
@@ -138,50 +124,15 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
     return _investments[index];
   }
 
-  /**
-   * @dev See {IERC4626-mint}.
-   */
-  function mint(uint256 assets, address receiver) public virtual override onlyRole(LP_ROLE) returns (uint256) {
-    return super.mint(assets, receiver);
-  }
-
-  /**
-   * @dev See {IERC4626-deposit}.
-   */
-  function deposit(uint256 assets, address receiver) public virtual override onlyRole(LP_ROLE) returns (uint256) {
-    return super.deposit(assets, receiver);
-  }
-
   function _deposit(address caller, address receiver, uint256 assets, uint256 shares) internal virtual override {
     uint256 prevBalance = _balance();
     // Transfers the assets from the caller and mints the shares
     super._deposit(caller, receiver, assets, shares);
+    // solhint-disable-next-line avoid-low-level-calls
     _collector.call(asset(), assets);
     uint256 balance = _balance();
     // Checks the collector took all the received assets from this contract
     if (balance != prevBalance) revert DifferentBalance(balance, prevBalance);
-  }
-
-  /**
-   * @dev See {IERC4626-withdraw}.
-   */
-  function withdraw(
-    uint256 assets,
-    address receiver,
-    address owner
-  ) public virtual override onlyRole(LP_ROLE) returns (uint256) {
-    return super.withdraw(assets, receiver, owner);
-  }
-
-  /**
-   * @dev See {IERC4626-redeem}.
-   */
-  function redeem(
-    uint256 assets,
-    address receiver,
-    address owner
-  ) public virtual override onlyRole(LP_ROLE) returns (uint256) {
-    return super.withdraw(assets, receiver, owner);
   }
 
   function _withdraw(
@@ -191,6 +142,7 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
     uint256 assets,
     uint256 shares
   ) internal virtual override {
+    // solhint-disable-next-line avoid-low-level-calls
     _withdrawer.call(asset(), assets);
     super._withdraw(caller, receiver, owner, assets, shares);
   }
@@ -200,8 +152,9 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
    * Is the minimum between the total assets of the user and the maximum amount withdrawable from the smart vault
    */
   function maxWithdraw(address owner) public view virtual override returns (uint256) {
-    uint256 max = IERC20Metadata(asset()).balanceOf(_smartVault);
     uint256 userAssets = super.maxWithdraw(owner);
+    if (userAssets == 0) return 0;
+    uint256 max = IERC20Metadata(asset()).balanceOf(_smartVault);
     for (uint256 i = 0; i < _investments.length; i++) {
       max += _investments[i].maxWithdraw(_smartVault);
       if (userAssets <= max) return userAssets;
@@ -268,5 +221,5 @@ contract SharedSmartVault is AccessControlUpgradeable, UUPSUpgradeable, ERC4626U
    * variables without shifting down storage in the inheritance chain.
    * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
    */
-  uint256[48] private __gap;
+  uint256[47] private __gap;
 }
