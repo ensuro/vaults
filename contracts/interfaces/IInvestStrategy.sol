@@ -6,11 +6,10 @@ interface IInvestStrategy {
   function disconnect(bytes32 storageSlot, bool force) external;
   function deposit(bytes32 storageSlot, uint256 assets) external;
   function withdraw(bytes32 storageSlot, uint256 assets) external;
+  function forwardEntryPoint(bytes32 storageSlot, uint8 method, bytes memory params) external;
 
   // Views
   function totalAssets(address contract_, bytes32 storageSlot) external view returns (uint256 totalManagedAssets);
   function maxDeposit(address contract_, bytes32 storageSlot) external view returns (uint256 maxAssets);
   function maxWithdraw(address contract_, bytes32 storageSlot) external view returns (uint256 maxAssets);
-
-  function forwardAllowed(bytes4 selector) external view returns (bool);
 }

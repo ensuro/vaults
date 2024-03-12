@@ -41,8 +41,13 @@ contract CompoundV3InvestStrategy is IInvestStrategy {
   error CanBeCalledOnlyThroughDelegateCall();
   error CannotDisconnectWithAssets();
 
+  enum ForwardMethods {
+    harvestRewards,
+    setSwapConfig
+  }
+
   modifier onlyDelegCall() {
-    if (address(this) != __self) revert CanBeCalledOnlyThroughDelegateCall();
+    if (address(this) == __self) revert CanBeCalledOnlyThroughDelegateCall();
     _;
   }
 
@@ -98,7 +103,7 @@ contract CompoundV3InvestStrategy is IInvestStrategy {
     _cToken.supply(_baseToken, assets);
   }
 
-  function harvestRewards(bytes32 storageSlot, uint256 price) external onlyDelegCall onlyRole(HARVEST_ROLE) {
+  function _harvestRewards(bytes32 storageSlot, uint256 price) internal onlyRole(HARVEST_ROLE) {
     (address reward, , ) = _rewardsManager.rewardConfig(address(_cToken));
     if (reward == address(0)) return;
     _rewardsManager.claim(address(_cToken), address(this), true);
@@ -114,13 +119,21 @@ contract CompoundV3InvestStrategy is IInvestStrategy {
     emit RewardsClaimed(reward, earned, reinvestAmount);
   }
 
-  function setSwapConfig(
-    bytes32 storageSlot,
-    SwapLibrary.SwapConfig calldata swapConfig_
-  ) external onlyDelegCall onlyRole(SWAP_ADMIN_ROLE) {
-    swapConfig_.validate();
-    emit SwapConfigChanged(_getSwapConfig(address(this), storageSlot), swapConfig_);
-    StorageSlot.getBytesSlot(storageSlot).value = abi.encode(swapConfig_);
+  function _setSwapConfig(bytes32 storageSlot, bytes memory newSwapConfigAsBytes) internal onlyRole(SWAP_ADMIN_ROLE) {
+    SwapLibrary.SwapConfig memory swapConfig = abi.decode(newSwapConfigAsBytes, (SwapLibrary.SwapConfig));
+    swapConfig.validate();
+    emit SwapConfigChanged(_getSwapConfig(address(this), storageSlot), swapConfig);
+    StorageSlot.getBytesSlot(storageSlot).value = newSwapConfigAsBytes;
+  }
+
+  function forwardEntryPoint(bytes32 storageSlot, uint8 method, bytes memory params) external onlyDelegCall {
+    ForwardMethods checkedMethod = ForwardMethods(method);
+    if (checkedMethod == ForwardMethods.harvestRewards) {
+      uint256 price = abi.decode(params, (uint256));
+      _harvestRewards(storageSlot, price);
+    } else if (checkedMethod == ForwardMethods.setSwapConfig) {
+      _setSwapConfig(storageSlot, params);
+    }
   }
 
   function _getSwapConfig(
@@ -134,16 +147,4 @@ contract CompoundV3InvestStrategy is IInvestStrategy {
   function getSwapConfig(address contract_, bytes32 storageSlot) public view returns (SwapLibrary.SwapConfig memory) {
     return _getSwapConfig(contract_, storageSlot);
   }
-
-  function forwardAllowed(bytes4 selector) external view returns (bool) {
-    return (selector == CompoundV3InvestStrategy.harvestRewards.selector ||
-      selector == CompoundV3InvestStrategy.setSwapConfig.selector);
-  }
-
-  /**
-   * @dev This empty reserved space is put in place to allow future versions to add new
-   * variables without shifting down storage in the inheritance chain.
-   * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
-   */
-  uint256[47] private __gap;
 }

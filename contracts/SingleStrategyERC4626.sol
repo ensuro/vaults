@@ -27,8 +27,14 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
 
   event StrategyChanged(IInvestStrategy oldStrategy, IInvestStrategy newStrategy);
   event WithdrawFailed(bytes reason);
+  event DepositFailed(bytes reason);
 
   error ForwardNotAllowed(address strategy, bytes4 method);
+
+  /// @custom:oz-upgrades-unsafe-allow constructor
+  constructor() {
+    _disableInitializers();
+  }
 
   /**
    * @dev Initializes the CompoundV3ERC4626
@@ -132,17 +138,35 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     );
   }
 
-  function _withdrawFromStrategy(uint256 assets, bool ignoreError) internal {
+  function _withdrawFromStrategy(uint256 assets, bool ignoreError) internal returns (bool) {
     if (ignoreError) {
       // solhint-disable-next-line avoid-low-level-calls
       (bool success, bytes memory returndata) = address(_strategy).delegatecall(
         abi.encodeWithSelector(IInvestStrategy.withdraw.selector, strategyStorageSlot(), assets)
       );
       if (!success) emit WithdrawFailed(returndata);
+      return success;
     } else {
       address(_strategy).functionDelegateCall(
         abi.encodeWithSelector(IInvestStrategy.withdraw.selector, strategyStorageSlot(), assets)
       );
+      return true;
+    }
+  }
+
+  function _depositIntoStrategy(uint256 assets, bool ignoreError) internal returns (bool) {
+    if (ignoreError) {
+      // solhint-disable-next-line avoid-low-level-calls
+      (bool success, bytes memory returndata) = address(_strategy).delegatecall(
+        abi.encodeWithSelector(IInvestStrategy.deposit.selector, strategyStorageSlot(), assets)
+      );
+      if (!success) emit DepositFailed(returndata);
+      return success;
+    } else {
+      address(_strategy).functionDelegateCall(
+        abi.encodeWithSelector(IInvestStrategy.deposit.selector, strategyStorageSlot(), assets)
+      );
+      return true;
     }
   }
 
@@ -157,10 +181,10 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     return r.value;
   }
 
-  function forwardToStrategy(bytes memory functionCall) external {
-    if (!_strategy.forwardAllowed(bytes4(functionCall)))
-      revert ForwardNotAllowed(address(_strategy), bytes4(functionCall));
-    address(_strategy).functionDelegateCall(functionCall);
+  function forwardToStrategy(uint8 method, bytes memory extraData) external {
+    address(_strategy).functionDelegateCall(
+      abi.encodeWithSelector(IInvestStrategy.forwardEntryPoint.selector, strategyStorageSlot(), method, extraData)
+    );
   }
 
   function setStrategy(
@@ -170,13 +194,20 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
   ) external onlyRole(SET_STRATEGY_ROLE) {
     // I explicitly don't check newStrategy != _strategy because in some cases might be usefull to disconnect and
     // connect a strategy
-    _withdrawFromStrategy(_strategy.maxWithdraw(address(this), strategyStorageSlot()), force);
+    uint256 totalAssets = _strategy.totalAssets(address(this), strategyStorageSlot());
+    _withdrawFromStrategy(totalAssets, force);
     address(_strategy).functionDelegateCall(
       abi.encodeWithSelector(IInvestStrategy.disconnect.selector, strategyStorageSlot(), force)
     );
     emit StrategyChanged(_strategy, newStrategy);
     _strategy = newStrategy;
     _connectStrategy(initStrategyData);
+    // Deposits all the funds
+    _depositIntoStrategy(IERC20Metadata(asset()).balanceOf(address(this)), force);
+  }
+
+  function getStrategy() external view returns (IInvestStrategy) {
+    return _strategy;
   }
 
   /**
