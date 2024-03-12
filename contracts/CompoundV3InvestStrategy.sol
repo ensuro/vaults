@@ -48,7 +48,7 @@ contract CompoundV3InvestStrategy is IInvestStrategy {
 
   modifier onlyRole(bytes32 role) {
     if (!IAccessControl(address(this)).hasRole(role, msg.sender))
-      revert(AccessControlUnauthorizedAccount(msg.sender, account));
+      revert AccessControlUnauthorizedAccount(msg.sender, role);
     _;
   }
 

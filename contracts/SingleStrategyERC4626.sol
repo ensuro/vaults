@@ -158,7 +158,8 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
   }
 
   function forwardToStrategy(bytes memory functionCall) external {
-    if (!_strategy.forwardAllowed(bytes4(functionCall))) revert ForwardNotAllowed(_strategy, bytes4(functionCall));
+    if (!_strategy.forwardAllowed(bytes4(functionCall)))
+      revert ForwardNotAllowed(address(_strategy), bytes4(functionCall));
     address(_strategy).functionDelegateCall(functionCall);
   }
 
