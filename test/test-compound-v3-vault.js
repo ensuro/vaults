@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { amountFunction, _W, getRole, accessControlMessage, getTransactionEvent } = require("@ensuro/core/js/utils");
 const { initForkCurrency, setupChain } = require("@ensuro/core/js/test-utils");
-const { buildUniswapConfig, encodeSwapConfig } = require("@ensuro/swaplibrary/js/utils");
+const { buildUniswapConfig } = require("@ensuro/swaplibrary/js/utils");
 const { anyUint } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
@@ -57,6 +57,10 @@ const NAME = "Compound USDCv3 Vault";
 const SYMB = "ecUSDCv3";
 
 const FEETIER = 3000;
+
+function encodeSwapConfig(swapConfig) {
+  return ethers.AbiCoder.defaultAbiCoder().encode(["tuple(uint8, uint256, bytes)"], [swapConfig]);
+}
 
 async function setUp() {
   const [, lp, lp2, anon, guardian, admin] = await ethers.getSigners();
