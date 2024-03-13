@@ -189,16 +189,6 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
   }
 
   /**
-   * @dev Exposes a given slot as a bytes32. To be used by the IInvestStrategy views to access their storage.
-   *      Only the slot==strategyStorageSlot() can be accessed.
-   */
-  function getBytes32Slot(bytes32 slot) external view override returns (bytes32) {
-    if (slot != strategyStorageSlot()) revert OnlyStrategyStorageExposed();
-    StorageSlot.Bytes32Slot storage r = StorageSlot.getBytes32Slot(slot);
-    return r.value;
-  }
-
-  /**
    * @dev Exposes a given slot as a bytes array. To be used by the IInvestStrategy views to access their storage.
    *      Only the slot==strategyStorageSlot() can be accessed.
    */
@@ -223,8 +213,9 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
       );
   }
 
-  function _disconnect(bool force) internal {
+  function _disconnectStrategy(bool force) internal {
     if (force) {
+      // solhint-disable-next-line avoid-low-level-calls
       (bool success, bytes memory returndata) = address(_strategy).delegatecall(
         abi.encodeWithSelector(IInvestStrategy.disconnect.selector, strategyStorageSlot(), true)
       );
@@ -254,9 +245,7 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     // I explicitly don't check newStrategy != _strategy because in some cases might be usefull to disconnect and
     // connect a strategy
     _withdrawFromStrategy(_strategy.totalAssets(address(this), strategyStorageSlot()), force);
-    address(_strategy).functionDelegateCall(
-      abi.encodeWithSelector(IInvestStrategy.disconnect.selector, strategyStorageSlot(), force)
-    );
+    _disconnectStrategy(force);
     emit StrategyChanged(_strategy, newStrategy);
     _strategy = newStrategy;
     // We don't make _connect error proof, since the user can take care the new strategy doesn't fails on connect
@@ -268,7 +257,7 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
   /**
    * @dev Returns the current strategy plugged into the contract
    */
-  function getStrategy() external view returns (IInvestStrategy) {
+  function strategy() external view returns (IInvestStrategy) {
     return _strategy;
   }
 

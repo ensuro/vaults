@@ -12,14 +12,6 @@ pragma solidity ^0.8.0;
  */
 interface IExposeStorage {
   /**
-   * @dev Returns the data stored on a given slot as bytes32. The contract can revert if doesn't want to share a
-   *      specific slot.
-   *
-   * @param slot The slot where the data is stored.
-   * @return The data in the specified slot as bytes32
-   */
-  function getBytes32Slot(bytes32 slot) external view returns (bytes32);
-  /**
    * @dev Returns the data stored on a given slot as bytes. The contract can revert if doesn't want to share a
    *      specific slot.
    *

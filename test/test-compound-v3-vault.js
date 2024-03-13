@@ -2,12 +2,13 @@ const { expect } = require("chai");
 const { amountFunction, _W, getRole, accessControlMessage, getTransactionEvent } = require("@ensuro/core/js/utils");
 const { initForkCurrency, setupChain } = require("@ensuro/core/js/test-utils");
 const { buildUniswapConfig } = require("@ensuro/swaplibrary/js/utils");
+const { encodeSwapConfig, encodeDummyStorage } = require("./utils");
 const { anyUint } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
 const { ethers } = hre;
-const { MaxUint256, ZeroAddress, ZeroHash } = hre.ethers;
+const { MaxUint256, ZeroAddress } = hre.ethers;
 
 const ADDRESSES = {
   // polygon mainnet addresses
@@ -57,10 +58,6 @@ const NAME = "Compound USDCv3 Vault";
 const SYMB = "ecUSDCv3";
 
 const FEETIER = 3000;
-
-function encodeSwapConfig(swapConfig) {
-  return ethers.AbiCoder.defaultAbiCoder().encode(["tuple(uint8, uint256, bytes)"], [swapConfig]);
-}
 
 async function setUp() {
   const [, lp, lp2, anon, guardian, admin] = await ethers.getSigners();
@@ -490,7 +487,7 @@ variants.forEach((variant) => {
         const { currency, vault, lp, swapConfig, strategy, anon, admin, CompoundV3InvestStrategy } =
           await helpers.loadFixture(variant.fixture);
 
-        expect(await vault.getStrategy()).to.equal(strategy);
+        expect(await vault.strategy()).to.equal(strategy);
         await expect(vault.connect(lp).mint(_A(3000), lp)).not.to.be.reverted;
 
         expect(await vault.totalAssets()).to.closeTo(_A(3000), MCENT);
@@ -533,7 +530,7 @@ variants.forEach((variant) => {
         expect(await vault.totalAssets()).to.closeTo(_A(3000), CENT);
 
         // Setting a dummyStrategy returns totalAssets == 0 because can't see the assets in Compound
-        let tx = await vault.connect(anon).setStrategy(dummyStrategy, ZeroHash, true);
+        let tx = await vault.connect(anon).setStrategy(dummyStrategy, encodeDummyStorage({}), true);
         await expect(tx)
           .to.emit(vault, "StrategyChanged")
           .withArgs(otherStrategy, dummyStrategy)
@@ -557,7 +554,7 @@ variants.forEach((variant) => {
         await cUSDCv3.connect(compGuardian).pause(false, false, false, false, false);
 
         // Setting a dummyStrategy sends the assets to the vault
-        tx = await vault.connect(anon).setStrategy(dummyStrategy, ZeroHash, false);
+        tx = await vault.connect(anon).setStrategy(dummyStrategy, encodeDummyStorage({}), false);
         await expect(tx)
           .to.emit(vault, "StrategyChanged")
           .withArgs(strategy, dummyStrategy)
