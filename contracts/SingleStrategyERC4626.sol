@@ -14,6 +14,13 @@ import {IExposeStorage} from "./interfaces/IExposeStorage.sol";
 /**
  * @title SingleStrategyERC4626
  *
+ * @dev Vault that invests/deinvests using a pluggable IInvestStrategy on each deposit/withdraw.
+ *      The vault is permissioned to deposit/withdraw (not transfer). The owner of the shares must have LP_ROLE.
+ *      Investment strategy can be changed. Also, custom messages can be sent to the IInvestStrategy contract.
+ *
+ *      The code of the IInvestStrategy is called using delegatecall, so it has full control over the assets and
+ *      storage of this contract, so you must be very careful the kind of IInvestStrategy is plugged.
+ *
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
@@ -28,8 +35,10 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
   event StrategyChanged(IInvestStrategy oldStrategy, IInvestStrategy newStrategy);
   event WithdrawFailed(bytes reason);
   event DepositFailed(bytes reason);
+  event DisconnectFailed(bytes reason);
 
   error ForwardNotAllowed(address strategy, bytes4 method);
+  error OnlyStrategyStorageExposed();
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor() {
@@ -37,7 +46,14 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
   }
 
   /**
-   * @dev Initializes the CompoundV3ERC4626
+   * @dev Initializes the SingleStrategyERC4626
+   *
+   * @param name_ Name of the ERC20/ERC4626 token
+   * @param symbol_ Symbol of the ERC20/ERC4626 token
+   * @param admin_ User that will receive the DEFAULT_ADMIN_ROLE and later can assign other permissions.
+   * @param asset_ The asset() of the ERC4626
+   * @param strategy_ The IInvestStrategy that will be used to manage the funds received.
+   * @param initStrategyData Initialization data that will be sent to the IInvestStrategy
    */
   function initialize(
     string memory name_,
@@ -72,6 +88,10 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     _connectStrategy(initStrategyData);
   }
 
+  /**
+   * @dev Returns the slot where the specific data of the strategy is stored. It's usefull for calling views on the
+   *      IInvestStrategy contract.
+   */
   function strategyStorageSlot() public view returns (bytes32) {
     return keccak256(abi.encode("co.ensuro.SingleStrategyERC4626", _strategy));
   }
@@ -133,9 +153,7 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
   function _deposit(address caller, address receiver, uint256 assets, uint256 shares) internal virtual override {
     // Transfers the assets from the caller and supplies to compound
     super._deposit(caller, receiver, assets, shares);
-    address(_strategy).functionDelegateCall(
-      abi.encodeWithSelector(IInvestStrategy.deposit.selector, strategyStorageSlot(), assets)
-    );
+    _depositIntoStrategy(assets, false);
   }
 
   function _withdrawFromStrategy(uint256 assets, bool ignoreError) internal returns (bool) {
@@ -170,23 +188,64 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     }
   }
 
-  // Functions to access the storage from Strategy view
+  /**
+   * @dev Exposes a given slot as a bytes32. To be used by the IInvestStrategy views to access their storage.
+   *      Only the slot==strategyStorageSlot() can be accessed.
+   */
   function getBytes32Slot(bytes32 slot) external view override returns (bytes32) {
+    if (slot != strategyStorageSlot()) revert OnlyStrategyStorageExposed();
     StorageSlot.Bytes32Slot storage r = StorageSlot.getBytes32Slot(slot);
     return r.value;
   }
 
+  /**
+   * @dev Exposes a given slot as a bytes array. To be used by the IInvestStrategy views to access their storage.
+   *      Only the slot==strategyStorageSlot() can be accessed.
+   */
   function getBytesSlot(bytes32 slot) external view override returns (bytes memory) {
+    if (slot != strategyStorageSlot()) revert OnlyStrategyStorageExposed();
     StorageSlot.BytesSlot storage r = StorageSlot.getBytesSlot(slot);
     return r.value;
   }
 
-  function forwardToStrategy(uint8 method, bytes memory extraData) external {
-    address(_strategy).functionDelegateCall(
-      abi.encodeWithSelector(IInvestStrategy.forwardEntryPoint.selector, strategyStorageSlot(), method, extraData)
-    );
+  /**
+   * @dev Used to call specific methods on the strategies. Anyone can call this method, is responsability of the
+   *      IInvestStrategy to check access permissions when needed.
+   * @param method Id of the method to call. Is recommended that the strategy defines an enum with the methods that
+   *               can be called externally and validates this value.
+   * @param extraData Additional parameters sent to the method.
+   * @return Returns the output received from the IInvestStrategy.
+   */
+  function forwardToStrategy(uint8 method, bytes memory extraData) external returns (bytes memory) {
+    return
+      address(_strategy).functionDelegateCall(
+        abi.encodeWithSelector(IInvestStrategy.forwardEntryPoint.selector, strategyStorageSlot(), method, extraData)
+      );
   }
 
+  function _disconnect(bool force) internal {
+    if (force) {
+      (bool success, bytes memory returndata) = address(_strategy).delegatecall(
+        abi.encodeWithSelector(IInvestStrategy.disconnect.selector, strategyStorageSlot(), true)
+      );
+      if (!success) emit DisconnectFailed(returndata);
+    } else {
+      address(_strategy).functionDelegateCall(
+        abi.encodeWithSelector(IInvestStrategy.disconnect.selector, strategyStorageSlot(), false)
+      );
+    }
+  }
+
+  /**
+   * @dev Changes the current investment strategy to a new one. When this happens, all funds are withdrawn from the
+   *      old strategy and deposited on the new one. This reverts if any of this fails, unless the force parameter is
+   *      true, in that case errors in withdrawal or deposit are silented.
+   * @param newStrategy The new strategy to plug into the vault
+   * @param initStrategyData Initialization parameters for this new strategy
+   * @param force Boolean to indicate if errors on withdraw or deposit should be accepted. Normally you should send
+   *              this value in `false`. Only use `true` if you know what you are doing and trying to replace a faulty
+   *              strategy.
+   */
   function setStrategy(
     IInvestStrategy newStrategy,
     bytes memory initStrategyData,
@@ -194,18 +253,21 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
   ) external onlyRole(SET_STRATEGY_ROLE) {
     // I explicitly don't check newStrategy != _strategy because in some cases might be usefull to disconnect and
     // connect a strategy
-    uint256 totalAssets = _strategy.totalAssets(address(this), strategyStorageSlot());
-    _withdrawFromStrategy(totalAssets, force);
+    _withdrawFromStrategy(_strategy.totalAssets(address(this), strategyStorageSlot()), force);
     address(_strategy).functionDelegateCall(
       abi.encodeWithSelector(IInvestStrategy.disconnect.selector, strategyStorageSlot(), force)
     );
     emit StrategyChanged(_strategy, newStrategy);
     _strategy = newStrategy;
+    // We don't make _connect error proof, since the user can take care the new strategy doesn't fails on connect
     _connectStrategy(initStrategyData);
-    // Deposits all the funds
+    // Deposits all the funds, in case something was gifted to the vault.
     _depositIntoStrategy(IERC20Metadata(asset()).balanceOf(address(this)), force);
   }
 
+  /**
+   * @dev Returns the current strategy plugged into the contract
+   */
   function getStrategy() external view returns (IInvestStrategy) {
     return _strategy;
   }

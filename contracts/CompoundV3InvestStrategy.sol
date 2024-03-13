@@ -126,7 +126,11 @@ contract CompoundV3InvestStrategy is IInvestStrategy {
     StorageSlot.getBytesSlot(storageSlot).value = newSwapConfigAsBytes;
   }
 
-  function forwardEntryPoint(bytes32 storageSlot, uint8 method, bytes memory params) external onlyDelegCall {
+  function forwardEntryPoint(
+    bytes32 storageSlot,
+    uint8 method,
+    bytes memory params
+  ) external onlyDelegCall returns (bytes memory) {
     ForwardMethods checkedMethod = ForwardMethods(method);
     if (checkedMethod == ForwardMethods.harvestRewards) {
       uint256 price = abi.decode(params, (uint256));
@@ -134,6 +138,7 @@ contract CompoundV3InvestStrategy is IInvestStrategy {
     } else if (checkedMethod == ForwardMethods.setSwapConfig) {
       _setSwapConfig(storageSlot, params);
     }
+    return bytes("");
   }
 
   function _getSwapConfig(
