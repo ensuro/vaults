@@ -98,13 +98,29 @@ describe("SingleStrategyERC4626 contract tests", function () {
 
   it("It sets and reads the right value from strategy storage", async () => {
     const { vault, strategy } = await helpers.loadFixture(setUp);
-    expect(await strategy.getFail(vault)).to.be.deep.equal(dummyStorage({}));
-    await expect(vault.forwardToStrategy(0, encodeDummyStorage({ failDisconnect: true }))).not.to.be.reverted;
-    expect(await strategy.getFail(vault)).to.be.deep.equal(dummyStorage({ failDisconnect: true }));
-    await expect(vault.forwardToStrategy(0, encodeDummyStorage({ failConnect: true }))).not.to.be.reverted;
-    expect(await strategy.getFail(vault)).to.be.deep.equal(dummyStorage({ failConnect: true }));
+    let failConfig = {};
+    expect(await strategy.getFail(vault)).to.be.deep.equal(dummyStorage(failConfig));
+
+    failConfig = { failDisconnect: true };
+    await expect(vault.forwardToStrategy(0, encodeDummyStorage(failConfig))).not.to.be.reverted;
+    expect(await strategy.getFail(vault)).to.be.deep.equal(dummyStorage(failConfig));
+
+    failConfig = { failConnect: true };
+    await expect(vault.forwardToStrategy(0, encodeDummyStorage(failConfig))).not.to.be.reverted;
+    expect(await strategy.getFail(vault)).to.be.deep.equal(dummyStorage(failConfig));
+
     await expect(vault.forwardToStrategy(0, encodeDummyStorage({}))).not.to.be.reverted;
     expect(await strategy.getFail(vault)).to.be.deep.equal(dummyStorage({}));
+
+    failConfig = { failWithdraw: true };
+    await expect(vault.forwardToStrategy(0, encodeDummyStorage(failConfig))).not.to.be.reverted;
+    expect(await strategy.getFail(vault)).to.be.deep.equal(dummyStorage(failConfig));
+
+    expect(await vault.getBytesSlot(await strategy.storageSlot())).to.be.equal(encodeDummyStorage(failConfig));
+    await expect(vault.getBytesSlot(ethers.zeroPadValue(ethers.toQuantity(123), 32))).to.be.revertedWithCustomError(
+      vault,
+      "OnlyStrategyStorageExposed"
+    );
   });
 
   it("If disconnect fails it can't change the strategy unless forced", async () => {
