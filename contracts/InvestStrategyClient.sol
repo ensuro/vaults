@@ -20,97 +20,72 @@ library InvestStrategyClient {
   event DepositFailed(bytes reason);
   event DisconnectFailed(bytes reason);
 
-  function dcConnect(IInvestStrategy strategy, bytes32 storageSlot, bytes memory initStrategyData) internal {
-    address(strategy).functionDelegateCall(
-      abi.encodeWithSelector(IInvestStrategy.connect.selector, storageSlot, initStrategyData)
-    );
+  function dcConnect(IInvestStrategy strategy, bytes memory initStrategyData) internal {
+    address(strategy).functionDelegateCall(abi.encodeWithSelector(IInvestStrategy.connect.selector, initStrategyData));
   }
 
-  function dcDisconnect(IInvestStrategy strategy, bytes32 storageSlot, bool force) internal {
+  function dcDisconnect(IInvestStrategy strategy, bool force) internal {
     if (force) {
       // solhint-disable-next-line avoid-low-level-calls
       (bool success, bytes memory returndata) = address(strategy).delegatecall(
-        abi.encodeWithSelector(IInvestStrategy.disconnect.selector, storageSlot, true)
+        abi.encodeWithSelector(IInvestStrategy.disconnect.selector, true)
       );
       if (!success) emit DisconnectFailed(returndata);
     } else {
-      address(strategy).functionDelegateCall(
-        abi.encodeWithSelector(IInvestStrategy.disconnect.selector, storageSlot, false)
-      );
+      address(strategy).functionDelegateCall(abi.encodeWithSelector(IInvestStrategy.disconnect.selector, false));
     }
   }
 
-  function dcWithdraw(
-    IInvestStrategy strategy,
-    bytes32 storageSlot,
-    uint256 assets,
-    bool ignoreError
-  ) internal returns (bool) {
+  function dcWithdraw(IInvestStrategy strategy, uint256 assets, bool ignoreError) internal returns (bool) {
     if (ignoreError) {
       // solhint-disable-next-line avoid-low-level-calls
       (bool success, bytes memory returndata) = address(strategy).delegatecall(
-        abi.encodeWithSelector(IInvestStrategy.withdraw.selector, storageSlot, assets)
+        abi.encodeWithSelector(IInvestStrategy.withdraw.selector, assets)
       );
       if (!success) emit WithdrawFailed(returndata);
       return success;
     } else {
-      address(strategy).functionDelegateCall(
-        abi.encodeWithSelector(IInvestStrategy.withdraw.selector, storageSlot, assets)
-      );
+      address(strategy).functionDelegateCall(abi.encodeWithSelector(IInvestStrategy.withdraw.selector, assets));
       return true;
     }
   }
 
-  function dcDeposit(
-    IInvestStrategy strategy,
-    bytes32 storageSlot,
-    uint256 assets,
-    bool ignoreError
-  ) internal returns (bool) {
+  function dcDeposit(IInvestStrategy strategy, uint256 assets, bool ignoreError) internal returns (bool) {
     if (ignoreError) {
       // solhint-disable-next-line avoid-low-level-calls
       (bool success, bytes memory returndata) = address(strategy).delegatecall(
-        abi.encodeWithSelector(IInvestStrategy.deposit.selector, storageSlot, assets)
+        abi.encodeWithSelector(IInvestStrategy.deposit.selector, assets)
       );
       if (!success) emit DepositFailed(returndata);
       return success;
     } else {
-      address(strategy).functionDelegateCall(
-        abi.encodeWithSelector(IInvestStrategy.deposit.selector, storageSlot, assets)
-      );
+      address(strategy).functionDelegateCall(abi.encodeWithSelector(IInvestStrategy.deposit.selector, assets));
       return true;
     }
   }
 
-  function dcForward(
-    IInvestStrategy strategy,
-    bytes32 storageSlot,
-    uint8 method,
-    bytes memory extraData
-  ) internal returns (bytes memory) {
+  function dcForward(IInvestStrategy strategy, uint8 method, bytes memory extraData) internal returns (bytes memory) {
     return
       address(strategy).functionDelegateCall(
-        abi.encodeWithSelector(IInvestStrategy.forwardEntryPoint.selector, storageSlot, method, extraData)
+        abi.encodeWithSelector(IInvestStrategy.forwardEntryPoint.selector, method, extraData)
       );
   }
 
   function strategyChange(
     IInvestStrategy oldStrategy,
-    bytes32 oldStorageSlot,
     IInvestStrategy newStrategy,
-    bytes32 newStorageSlot,
     bytes memory newStrategyInitData,
     IERC20Metadata asset,
     bool force
   ) internal {
     // I explicitly don't check newStrategy != _strategy because in some cases might be usefull to disconnect and
     // connect a strategy
-    dcWithdraw(oldStrategy, oldStorageSlot, oldStrategy.totalAssets(address(this), oldStorageSlot), force);
-    dcDisconnect(oldStrategy, oldStorageSlot, force);
+    dcWithdraw(oldStrategy, oldStrategy.totalAssets(address(this)), force);
+    dcDisconnect(oldStrategy, force);
     // We don't make _connect error proof, since the user can take care the new strategy doesn't fails on connect
-    dcConnect(newStrategy, newStorageSlot, newStrategyInitData);
+    dcConnect(newStrategy, newStrategyInitData);
     // Deposits all the funds, in case something was gifted to the vault.
-    dcDeposit(newStrategy, newStorageSlot, asset.balanceOf(address(this)), force);
+    dcDeposit(newStrategy, asset.balanceOf(address(this)), force);
     emit StrategyChanged(oldStrategy, newStrategy);
   }
 
@@ -121,7 +96,19 @@ library InvestStrategyClient {
    *      Also, be aware if you unplug and the re-plug a given strategy into a contract, you might be reading a state
    *      that is not clean
    */
-  function storageSlot(IInvestStrategy strategy) public pure returns (bytes32) {
+  function makeStorageSlot(IInvestStrategy strategy) internal pure returns (bytes32) {
     return keccak256(abi.encode("co.ensuro.InvestStrategyClient", strategy));
+  }
+
+  function totalAssets(IInvestStrategy strategy) internal view returns (uint256) {
+    return strategy.totalAssets(address(this));
+  }
+
+  function maxDeposit(IInvestStrategy strategy) internal view returns (uint256) {
+    return strategy.maxDeposit(address(this));
+  }
+
+  function maxWithdraw(IInvestStrategy strategy) internal view returns (uint256) {
+    return strategy.maxWithdraw(address(this));
   }
 }

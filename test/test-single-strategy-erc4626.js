@@ -98,14 +98,13 @@ describe("SingleStrategyERC4626 contract tests", function () {
 
   it("It sets and reads the right value from strategy storage", async () => {
     const { vault, strategy } = await helpers.loadFixture(setUp);
-    const storageSlot = await vault.strategyStorageSlot();
-    expect(await strategy.getFail(vault, storageSlot)).to.be.deep.equal(dummyStorage({}));
+    expect(await strategy.getFail(vault)).to.be.deep.equal(dummyStorage({}));
     await expect(vault.forwardToStrategy(0, encodeDummyStorage({ failDisconnect: true }))).not.to.be.reverted;
-    expect(await strategy.getFail(vault, storageSlot)).to.be.deep.equal(dummyStorage({ failDisconnect: true }));
+    expect(await strategy.getFail(vault)).to.be.deep.equal(dummyStorage({ failDisconnect: true }));
     await expect(vault.forwardToStrategy(0, encodeDummyStorage({ failConnect: true }))).not.to.be.reverted;
-    expect(await strategy.getFail(vault, storageSlot)).to.be.deep.equal(dummyStorage({ failConnect: true }));
+    expect(await strategy.getFail(vault)).to.be.deep.equal(dummyStorage({ failConnect: true }));
     await expect(vault.forwardToStrategy(0, encodeDummyStorage({}))).not.to.be.reverted;
-    expect(await strategy.getFail(vault, storageSlot)).to.be.deep.equal(dummyStorage({}));
+    expect(await strategy.getFail(vault)).to.be.deep.equal(dummyStorage({}));
   });
 
   it("If disconnect fails it can't change the strategy unless forced", async () => {

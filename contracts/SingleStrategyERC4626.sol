@@ -87,37 +87,21 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     bytes memory initStrategyData
   ) internal onlyInitializing {
     _strategy = strategy_;
-    _strategy.dcConnect(strategyStorageSlot(), initStrategyData);
-  }
-
-  /**
-   * @dev Returns the slot where the specific data of the strategy is stored. It's usefull for calling views on the
-   *      IInvestStrategy contract.
-   */
-  function strategyStorageSlot() public view returns (bytes32) {
-    return storageSlotForStrategy(_strategy);
-  }
-
-  /**
-   * @dev Returns the slot where the specific data of the strategy is stored. It's usefull for calling views on the
-   *      IInvestStrategy contract.
-   */
-  function storageSlotForStrategy(IInvestStrategy strategy_) public pure returns (bytes32) {
-    return keccak256(abi.encode("co.ensuro.SingleStrategyERC4626", strategy_));
+    _strategy.dcConnect(initStrategyData);
   }
 
   /**
    * @dev See {IERC4626-maxWithdraw}.
    */
   function maxWithdraw(address owner) public view virtual override returns (uint256) {
-    return MathUpgradeable.min(_strategy.maxWithdraw(address(this), strategyStorageSlot()), super.maxWithdraw(owner));
+    return MathUpgradeable.min(_strategy.maxWithdraw(), super.maxWithdraw(owner));
   }
 
   /**
    * @dev See {IERC4626-maxRedeem}.
    */
   function maxRedeem(address owner) public view virtual override returns (uint256) {
-    uint256 maxAssets = _strategy.maxWithdraw(address(this), strategyStorageSlot());
+    uint256 maxAssets = _strategy.maxWithdraw();
     return MathUpgradeable.min(_convertToShares(maxAssets, MathUpgradeable.Rounding.Down), super.maxRedeem(owner));
   }
 
@@ -125,14 +109,14 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
    * @dev See {IERC4626-maxDeposit}.
    */
   function maxDeposit(address owner) public view virtual override returns (uint256) {
-    return MathUpgradeable.min(_strategy.maxDeposit(address(this), strategyStorageSlot()), super.maxDeposit(owner));
+    return MathUpgradeable.min(_strategy.maxDeposit(), super.maxDeposit(owner));
   }
 
   /**
    * @dev See {IERC4626-maxMint}.
    */
   function maxMint(address owner) public view virtual override returns (uint256) {
-    uint256 maxAssets = _strategy.maxDeposit(address(this), strategyStorageSlot());
+    uint256 maxAssets = _strategy.maxDeposit();
     return MathUpgradeable.min(_convertToShares(maxAssets, MathUpgradeable.Rounding.Down), super.maxMint(owner));
   }
 
@@ -140,7 +124,7 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
    * @dev See {IERC4626-totalAssets}.
    */
   function totalAssets() public view virtual override returns (uint256 assets) {
-    return _strategy.totalAssets(address(this), strategyStorageSlot());
+    return _strategy.totalAssets();
   }
 
   function _withdraw(
@@ -150,14 +134,14 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     uint256 assets,
     uint256 shares
   ) internal virtual override {
-    _strategy.dcWithdraw(strategyStorageSlot(), assets, false);
+    _strategy.dcWithdraw(assets, false);
     super._withdraw(caller, receiver, owner, assets, shares);
   }
 
   function _deposit(address caller, address receiver, uint256 assets, uint256 shares) internal virtual override {
     // Transfers the assets from the caller and supplies to compound
     super._deposit(caller, receiver, assets, shares);
-    _strategy.dcDeposit(strategyStorageSlot(), assets, false);
+    _strategy.dcDeposit(assets, false);
   }
 
   /**
@@ -165,7 +149,7 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
    *      Only the slot==strategyStorageSlot() can be accessed.
    */
   function getBytesSlot(bytes32 slot) external view override returns (bytes memory) {
-    if (slot != strategyStorageSlot()) revert OnlyStrategyStorageExposed();
+    if (slot != _strategy.storageSlot()) revert OnlyStrategyStorageExposed();
     StorageSlot.BytesSlot storage r = StorageSlot.getBytesSlot(slot);
     return r.value;
   }
@@ -179,7 +163,7 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
    * @return Returns the output received from the IInvestStrategy.
    */
   function forwardToStrategy(uint8 method, bytes memory extraData) external returns (bytes memory) {
-    return _strategy.dcForward(strategyStorageSlot(), method, extraData);
+    return _strategy.dcForward(method, extraData);
   }
 
   /**
@@ -197,15 +181,7 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     bytes memory initStrategyData,
     bool force
   ) external onlyRole(SET_STRATEGY_ROLE) {
-    InvestStrategyClient.strategyChange(
-      _strategy,
-      storageSlotForStrategy(_strategy),
-      newStrategy,
-      storageSlotForStrategy(newStrategy),
-      initStrategyData,
-      IERC20Metadata(asset()),
-      force
-    );
+    InvestStrategyClient.strategyChange(_strategy, newStrategy, initStrategyData, IERC20Metadata(asset()), force);
     _strategy = newStrategy;
   }
 

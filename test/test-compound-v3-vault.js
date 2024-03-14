@@ -181,7 +181,7 @@ async function getSwapConfigERC4626(vault) {
 }
 
 async function getSwapConfigStrategy(vault, strategy) {
-  return strategy.getSwapConfig(vault, await vault.strategyStorageSlot());
+  return strategy.getSwapConfig(vault);
 }
 
 async function setSwapConfigERC4626(vault, swapConfig) {
@@ -542,12 +542,7 @@ variants.forEach((variant) => {
         expect(evt.args.assets).to.be.equal(0);
 
         expect(await vault.totalAssets()).to.equal(0);
-        expect(await dummyStrategy.getFail(vault, await vault.strategyStorageSlot())).to.deep.equal([
-          false,
-          false,
-          false,
-          false,
-        ]);
+        expect(await dummyStrategy.getFail(vault)).to.deep.equal([false, false, false, false]);
 
         // Setting again `strategy` works fine
         await expect(vault.connect(anon).setStrategy(strategy, encodeSwapConfig(swapConfig), false))

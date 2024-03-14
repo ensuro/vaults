@@ -9,6 +9,7 @@ import {SwapLibrary} from "@ensuro/swaplibrary/contracts/SwapLibrary.sol";
 import {IInvestStrategy} from "./interfaces/IInvestStrategy.sol";
 import {StorageSlot} from "@openzeppelin/contracts/utils/StorageSlot.sol";
 import {IExposeStorage} from "./interfaces/IExposeStorage.sol";
+import {InvestStrategyClient} from "./InvestStrategyClient.sol";
 
 /**
  * @title CompoundV3ERC4626
@@ -26,6 +27,8 @@ contract CompoundV3InvestStrategy is IInvestStrategy {
   bytes32 public constant SWAP_ADMIN_ROLE = keccak256("SWAP_ADMIN_ROLE");
 
   address private immutable __self = address(this);
+  bytes32 public immutable storageSlot = InvestStrategyClient.makeStorageSlot(this);
+
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   ICompoundV3 internal immutable _cToken;
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
@@ -63,38 +66,35 @@ contract CompoundV3InvestStrategy is IInvestStrategy {
     _baseToken = cToken_.baseToken();
   }
 
-  function connect(bytes32 storageSlot, bytes memory initData) external virtual override onlyDelegCall {
+  function connect(bytes memory initData) external virtual override onlyDelegCall {
     SwapLibrary.SwapConfig memory swapConfig = abi.decode(initData, (SwapLibrary.SwapConfig));
     swapConfig.validate();
     StorageSlot.getBytesSlot(storageSlot).value = initData;
   }
 
-  function disconnect(bytes32 /*storageSlot*/, bool force) external virtual override onlyDelegCall {
+  function disconnect(bool force) external virtual override onlyDelegCall {
     if (!force && _cToken.balanceOf(address(this)) != 0) revert CannotDisconnectWithAssets();
   }
 
-  function maxWithdraw(address contract_, bytes32 /*storageSlot*/) public view virtual override returns (uint256) {
+  function maxWithdraw(address contract_) public view virtual override returns (uint256) {
     if (_cToken.isWithdrawPaused()) return 0;
     return _cToken.balanceOf(contract_);
   }
 
-  function maxDeposit(address /*contract_*/, bytes32 /*storageSlot*/) public view virtual override returns (uint256) {
+  function maxDeposit(address /*contract_*/) public view virtual override returns (uint256) {
     if (_cToken.isSupplyPaused()) return 0;
     return type(uint256).max;
   }
 
-  function totalAssets(
-    address contract_,
-    bytes32 /*storageSlot*/
-  ) public view virtual override returns (uint256 assets) {
+  function totalAssets(address contract_) public view virtual override returns (uint256 assets) {
     return _cToken.balanceOf(contract_);
   }
 
-  function withdraw(bytes32 /*storageSlot*/, uint256 assets) external virtual override onlyDelegCall {
+  function withdraw(uint256 assets) external virtual override onlyDelegCall {
     _cToken.withdraw(_baseToken, assets);
   }
 
-  function deposit(bytes32 /*storageSlot*/, uint256 assets) external virtual override onlyDelegCall {
+  function deposit(uint256 assets) external virtual override onlyDelegCall {
     _supply(assets);
   }
 
@@ -103,7 +103,7 @@ contract CompoundV3InvestStrategy is IInvestStrategy {
     _cToken.supply(_baseToken, assets);
   }
 
-  function _harvestRewards(bytes32 storageSlot, uint256 price) internal onlyRole(HARVEST_ROLE) {
+  function _harvestRewards(uint256 price) internal onlyRole(HARVEST_ROLE) {
     (address reward, , ) = _rewardsManager.rewardConfig(address(_cToken));
     if (reward == address(0)) return;
     _rewardsManager.claim(address(_cToken), address(this), true);
@@ -119,37 +119,30 @@ contract CompoundV3InvestStrategy is IInvestStrategy {
     emit RewardsClaimed(reward, earned, reinvestAmount);
   }
 
-  function _setSwapConfig(bytes32 storageSlot, bytes memory newSwapConfigAsBytes) internal onlyRole(SWAP_ADMIN_ROLE) {
+  function _setSwapConfig(bytes memory newSwapConfigAsBytes) internal onlyRole(SWAP_ADMIN_ROLE) {
     SwapLibrary.SwapConfig memory swapConfig = abi.decode(newSwapConfigAsBytes, (SwapLibrary.SwapConfig));
     swapConfig.validate();
-    emit SwapConfigChanged(_getSwapConfig(address(this), storageSlot), swapConfig);
+    emit SwapConfigChanged(_getSwapConfig(address(this)), swapConfig);
     StorageSlot.getBytesSlot(storageSlot).value = newSwapConfigAsBytes;
   }
 
-  function forwardEntryPoint(
-    bytes32 storageSlot,
-    uint8 method,
-    bytes memory params
-  ) external onlyDelegCall returns (bytes memory) {
+  function forwardEntryPoint(uint8 method, bytes memory params) external onlyDelegCall returns (bytes memory) {
     ForwardMethods checkedMethod = ForwardMethods(method);
     if (checkedMethod == ForwardMethods.harvestRewards) {
       uint256 price = abi.decode(params, (uint256));
-      _harvestRewards(storageSlot, price);
+      _harvestRewards(price);
     } else if (checkedMethod == ForwardMethods.setSwapConfig) {
-      _setSwapConfig(storageSlot, params);
+      _setSwapConfig(params);
     }
     return bytes("");
   }
 
-  function _getSwapConfig(
-    address contract_,
-    bytes32 storageSlot
-  ) internal view returns (SwapLibrary.SwapConfig memory) {
+  function _getSwapConfig(address contract_) internal view returns (SwapLibrary.SwapConfig memory) {
     bytes memory swapConfigAsBytes = IExposeStorage(contract_).getBytesSlot(storageSlot);
     return abi.decode(swapConfigAsBytes, (SwapLibrary.SwapConfig));
   }
 
-  function getSwapConfig(address contract_, bytes32 storageSlot) public view returns (SwapLibrary.SwapConfig memory) {
-    return _getSwapConfig(contract_, storageSlot);
+  function getSwapConfig(address contract_) public view returns (SwapLibrary.SwapConfig memory) {
+    return _getSwapConfig(contract_);
   }
 }
