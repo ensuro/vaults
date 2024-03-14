@@ -81,133 +81,101 @@ async function setUp() {
   };
 }
 
-async function setUpCompoundV3ERC4626() {
-  const { currency, swapLibrary, adminAddr, swapConfig, admin, lp, lp2, guardian, anon } = await setUp();
-  const CompoundV3ERC4626 = await ethers.getContractFactory("CompoundV3ERC4626", {
-    libraries: {
-      SwapLibrary: await ethers.resolveAddress(swapLibrary),
-    },
-  });
-  const vault = await hre.upgrades.deployProxy(CompoundV3ERC4626, [NAME, SYMB, adminAddr, swapConfig], {
-    kind: "uups",
-    constructorArgs: [ADDRESSES.cUSDCv3, ADDRESSES.REWARDS],
-    unsafeAllow: ["external-library-linking"],
-  });
-  await currency.connect(lp).approve(vault, MaxUint256);
-  await currency.connect(lp2).approve(vault, MaxUint256);
-  await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
-  await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp2);
-
-  return {
-    currency,
-    CompoundV3ERC4626,
-    swapConfig,
-    vault,
-    adminAddr,
-    lp,
-    lp2,
-    anon,
-    guardian,
-    admin,
-  };
-}
-
-async function setUpCompoundV3Strategy() {
-  const { currency, swapLibrary, adminAddr, swapConfig, admin, lp, lp2, guardian, anon } = await setUp();
-  const CompoundV3InvestStrategy = await ethers.getContractFactory("CompoundV3InvestStrategy", {
-    libraries: {
-      SwapLibrary: await ethers.resolveAddress(swapLibrary),
-    },
-  });
-  const strategy = await CompoundV3InvestStrategy.deploy(ADDRESSES.cUSDCv3, ADDRESSES.REWARDS);
-  const SingleStrategyERC4626 = await ethers.getContractFactory("SingleStrategyERC4626");
-  const vault = await hre.upgrades.deployProxy(
-    SingleStrategyERC4626,
-    [NAME, SYMB, adminAddr, ADDRESSES.USDC, await ethers.resolveAddress(strategy), encodeSwapConfig(swapConfig)],
-    {
-      kind: "uups",
-      unsafeAllow: ["delegatecall"],
-    }
-  );
-  await currency.connect(lp).approve(vault, MaxUint256);
-  await currency.connect(lp2).approve(vault, MaxUint256);
-  await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
-  await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp2);
-
-  return {
-    currency,
-    SingleStrategyERC4626,
-    CompoundV3InvestStrategy,
-    swapConfig,
-    vault,
-    strategy,
-    adminAddr,
-    lp,
-    lp2,
-    anon,
-    guardian,
-    admin,
-  };
-}
-
-async function harvestRewardsV3ERC4636(vault, amount) {
-  return vault.harvestRewards(amount);
-}
-
 const CompoundV3StrategyMethods = {
   harvestRewards: 0,
   setSwapConfig: 1,
 };
 
-async function harvestRewardsV3Strategy(vault, amount) {
-  return vault.forwardToStrategy(
-    CompoundV3StrategyMethods.harvestRewards,
-    ethers.AbiCoder.defaultAbiCoder().encode(["uint256"], [amount])
-  );
-}
-
-async function accessControlWithMessage(action, user, role) {
-  return expect(action).to.be.revertedWith(accessControlMessage(user, null, role));
-}
-
-async function accessControlCustomError(action, user, role, contract) {
-  return expect(action)
-    .to.be.revertedWithCustomError(contract, "AccessControlUnauthorizedAccount")
-    .withArgs(user, getRole(role));
-}
-
-async function getSwapConfigERC4626(vault) {
-  return vault.getSwapConfig();
-}
-
-async function getSwapConfigStrategy(vault, strategy) {
-  return strategy.getSwapConfig(vault);
-}
-
-async function setSwapConfigERC4626(vault, swapConfig) {
-  return vault.setSwapConfig(swapConfig);
-}
-
-async function setSwapConfigV3Strategy(vault, swapConfig) {
-  return vault.forwardToStrategy(CompoundV3StrategyMethods.setSwapConfig, encodeSwapConfig(swapConfig));
-}
-
 const variants = [
   {
     name: "CompoundV3ERC4626",
-    fixture: setUpCompoundV3ERC4626,
-    harvestRewards: harvestRewardsV3ERC4636,
-    accessControlCheck: accessControlWithMessage,
-    getSwapConfig: getSwapConfigERC4626,
-    setSwapConfig: setSwapConfigERC4626,
+    fixture: async () => {
+      const { currency, swapLibrary, adminAddr, swapConfig, admin, lp, lp2, guardian, anon } = await setUp();
+      const CompoundV3ERC4626 = await ethers.getContractFactory("CompoundV3ERC4626", {
+        libraries: {
+          SwapLibrary: await ethers.resolveAddress(swapLibrary),
+        },
+      });
+      const vault = await hre.upgrades.deployProxy(CompoundV3ERC4626, [NAME, SYMB, adminAddr, swapConfig], {
+        kind: "uups",
+        constructorArgs: [ADDRESSES.cUSDCv3, ADDRESSES.REWARDS],
+        unsafeAllow: ["external-library-linking"],
+      });
+      await currency.connect(lp).approve(vault, MaxUint256);
+      await currency.connect(lp2).approve(vault, MaxUint256);
+      await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
+      await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp2);
+
+      return {
+        currency,
+        CompoundV3ERC4626,
+        swapConfig,
+        vault,
+        adminAddr,
+        lp,
+        lp2,
+        anon,
+        guardian,
+        admin,
+      };
+    },
+    harvestRewards: async (vault, amount) => vault.harvestRewards(amount),
+    accessControlCheck: async (action, user, role) =>
+      expect(action).to.be.revertedWith(accessControlMessage(user, null, role)),
+    getSwapConfig: async (vault) => vault.getSwapConfig(),
+    setSwapConfig: async (vault, swapConfig) => vault.setSwapConfig(swapConfig),
   },
   {
     name: "CompoundV3Strategy",
-    fixture: setUpCompoundV3Strategy,
-    harvestRewards: harvestRewardsV3Strategy,
-    accessControlCheck: accessControlCustomError,
-    getSwapConfig: getSwapConfigStrategy,
-    setSwapConfig: setSwapConfigV3Strategy,
+    fixture: async () => {
+      const { currency, swapLibrary, adminAddr, swapConfig, admin, lp, lp2, guardian, anon } = await setUp();
+      const CompoundV3InvestStrategy = await ethers.getContractFactory("CompoundV3InvestStrategy", {
+        libraries: {
+          SwapLibrary: await ethers.resolveAddress(swapLibrary),
+        },
+      });
+      const strategy = await CompoundV3InvestStrategy.deploy(ADDRESSES.cUSDCv3, ADDRESSES.REWARDS);
+      const SingleStrategyERC4626 = await ethers.getContractFactory("SingleStrategyERC4626");
+      const vault = await hre.upgrades.deployProxy(
+        SingleStrategyERC4626,
+        [NAME, SYMB, adminAddr, ADDRESSES.USDC, await ethers.resolveAddress(strategy), encodeSwapConfig(swapConfig)],
+        {
+          kind: "uups",
+          unsafeAllow: ["delegatecall"],
+        }
+      );
+      await currency.connect(lp).approve(vault, MaxUint256);
+      await currency.connect(lp2).approve(vault, MaxUint256);
+      await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
+      await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp2);
+
+      return {
+        currency,
+        SingleStrategyERC4626,
+        CompoundV3InvestStrategy,
+        swapConfig,
+        vault,
+        strategy,
+        adminAddr,
+        lp,
+        lp2,
+        anon,
+        guardian,
+        admin,
+      };
+    },
+    harvestRewards: async (vault, amount) =>
+      vault.forwardToStrategy(
+        CompoundV3StrategyMethods.harvestRewards,
+        ethers.AbiCoder.defaultAbiCoder().encode(["uint256"], [amount])
+      ),
+    accessControlCheck: async (action, user, role, contract) =>
+      expect(action)
+        .to.be.revertedWithCustomError(contract, "AccessControlUnauthorizedAccount")
+        .withArgs(user, getRole(role)),
+    getSwapConfig: async (vault, strategy) => strategy.getSwapConfig(vault),
+    setSwapConfig: async (vault, swapConfig) =>
+      vault.forwardToStrategy(CompoundV3StrategyMethods.setSwapConfig, encodeSwapConfig(swapConfig)),
   },
 ];
 
