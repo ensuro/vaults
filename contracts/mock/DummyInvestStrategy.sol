@@ -6,9 +6,9 @@ import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {StorageSlot} from "@openzeppelin/contracts/utils/StorageSlot.sol";
 import {IInvestStrategy} from "../interfaces/IInvestStrategy.sol";
 import {IExposeStorage} from "../interfaces/IExposeStorage.sol";
-import "hardhat/console.sol";
 
 contract DummyInvestStrategy is IInvestStrategy {
+  address private immutable __self = address(this);
   IERC20 internal immutable _asset;
 
   error Fail(string where);

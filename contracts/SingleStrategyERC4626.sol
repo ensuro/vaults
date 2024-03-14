@@ -10,6 +10,7 @@ import {MathUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/math/Ma
 import {PermissionedERC4626} from "./PermissionedERC4626.sol";
 import {IInvestStrategy} from "./interfaces/IInvestStrategy.sol";
 import {IExposeStorage} from "./interfaces/IExposeStorage.sol";
+import {InvestStrategyClient} from "./InvestStrategyClient.sol";
 
 /**
  * @title SingleStrategyERC4626
@@ -27,17 +28,18 @@ import {IExposeStorage} from "./interfaces/IExposeStorage.sol";
 contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
   using SafeERC20 for IERC20Metadata;
   using Address for address;
+  using InvestStrategyClient for IInvestStrategy;
 
   bytes32 public constant SET_STRATEGY_ROLE = keccak256("SET_STRATEGY_ROLE");
 
   IInvestStrategy internal _strategy;
 
+  // Events duplicated here from InvestStrategyClient library, so they go to the ABI
   event StrategyChanged(IInvestStrategy oldStrategy, IInvestStrategy newStrategy);
   event WithdrawFailed(bytes reason);
   event DepositFailed(bytes reason);
   event DisconnectFailed(bytes reason);
 
-  error ForwardNotAllowed(address strategy, bytes4 method);
   error OnlyStrategyStorageExposed();
 
   /// @custom:oz-upgrades-unsafe-allow constructor
@@ -85,7 +87,7 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     bytes memory initStrategyData
   ) internal onlyInitializing {
     _strategy = strategy_;
-    _connectStrategy(initStrategyData);
+    _strategy.dcConnect(strategyStorageSlot(), initStrategyData);
   }
 
   /**
@@ -93,13 +95,15 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
    *      IInvestStrategy contract.
    */
   function strategyStorageSlot() public view returns (bytes32) {
-    return keccak256(abi.encode("co.ensuro.SingleStrategyERC4626", _strategy));
+    return storageSlotForStrategy(_strategy);
   }
 
-  function _connectStrategy(bytes memory initStrategyData) internal {
-    address(_strategy).functionDelegateCall(
-      abi.encodeWithSelector(IInvestStrategy.connect.selector, strategyStorageSlot(), initStrategyData)
-    );
+  /**
+   * @dev Returns the slot where the specific data of the strategy is stored. It's usefull for calling views on the
+   *      IInvestStrategy contract.
+   */
+  function storageSlotForStrategy(IInvestStrategy strategy_) public pure returns (bytes32) {
+    return keccak256(abi.encode("co.ensuro.SingleStrategyERC4626", strategy_));
   }
 
   /**
@@ -146,46 +150,14 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     uint256 assets,
     uint256 shares
   ) internal virtual override {
-    _withdrawFromStrategy(assets, false);
+    _strategy.dcWithdraw(strategyStorageSlot(), assets, false);
     super._withdraw(caller, receiver, owner, assets, shares);
   }
 
   function _deposit(address caller, address receiver, uint256 assets, uint256 shares) internal virtual override {
     // Transfers the assets from the caller and supplies to compound
     super._deposit(caller, receiver, assets, shares);
-    _depositIntoStrategy(assets, false);
-  }
-
-  function _withdrawFromStrategy(uint256 assets, bool ignoreError) internal returns (bool) {
-    if (ignoreError) {
-      // solhint-disable-next-line avoid-low-level-calls
-      (bool success, bytes memory returndata) = address(_strategy).delegatecall(
-        abi.encodeWithSelector(IInvestStrategy.withdraw.selector, strategyStorageSlot(), assets)
-      );
-      if (!success) emit WithdrawFailed(returndata);
-      return success;
-    } else {
-      address(_strategy).functionDelegateCall(
-        abi.encodeWithSelector(IInvestStrategy.withdraw.selector, strategyStorageSlot(), assets)
-      );
-      return true;
-    }
-  }
-
-  function _depositIntoStrategy(uint256 assets, bool ignoreError) internal returns (bool) {
-    if (ignoreError) {
-      // solhint-disable-next-line avoid-low-level-calls
-      (bool success, bytes memory returndata) = address(_strategy).delegatecall(
-        abi.encodeWithSelector(IInvestStrategy.deposit.selector, strategyStorageSlot(), assets)
-      );
-      if (!success) emit DepositFailed(returndata);
-      return success;
-    } else {
-      address(_strategy).functionDelegateCall(
-        abi.encodeWithSelector(IInvestStrategy.deposit.selector, strategyStorageSlot(), assets)
-      );
-      return true;
-    }
+    _strategy.dcDeposit(strategyStorageSlot(), assets, false);
   }
 
   /**
@@ -207,24 +179,7 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
    * @return Returns the output received from the IInvestStrategy.
    */
   function forwardToStrategy(uint8 method, bytes memory extraData) external returns (bytes memory) {
-    return
-      address(_strategy).functionDelegateCall(
-        abi.encodeWithSelector(IInvestStrategy.forwardEntryPoint.selector, strategyStorageSlot(), method, extraData)
-      );
-  }
-
-  function _disconnectStrategy(bool force) internal {
-    if (force) {
-      // solhint-disable-next-line avoid-low-level-calls
-      (bool success, bytes memory returndata) = address(_strategy).delegatecall(
-        abi.encodeWithSelector(IInvestStrategy.disconnect.selector, strategyStorageSlot(), true)
-      );
-      if (!success) emit DisconnectFailed(returndata);
-    } else {
-      address(_strategy).functionDelegateCall(
-        abi.encodeWithSelector(IInvestStrategy.disconnect.selector, strategyStorageSlot(), false)
-      );
-    }
+    return _strategy.dcForward(strategyStorageSlot(), method, extraData);
   }
 
   /**
@@ -242,16 +197,16 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     bytes memory initStrategyData,
     bool force
   ) external onlyRole(SET_STRATEGY_ROLE) {
-    // I explicitly don't check newStrategy != _strategy because in some cases might be usefull to disconnect and
-    // connect a strategy
-    _withdrawFromStrategy(_strategy.totalAssets(address(this), strategyStorageSlot()), force);
-    _disconnectStrategy(force);
-    emit StrategyChanged(_strategy, newStrategy);
+    InvestStrategyClient.strategyChange(
+      _strategy,
+      storageSlotForStrategy(_strategy),
+      newStrategy,
+      storageSlotForStrategy(newStrategy),
+      initStrategyData,
+      IERC20Metadata(asset()),
+      force
+    );
     _strategy = newStrategy;
-    // We don't make _connect error proof, since the user can take care the new strategy doesn't fails on connect
-    _connectStrategy(initStrategyData);
-    // Deposits all the funds, in case something was gifted to the vault.
-    _depositIntoStrategy(IERC20Metadata(asset()).balanceOf(address(this)), force);
   }
 
   /**

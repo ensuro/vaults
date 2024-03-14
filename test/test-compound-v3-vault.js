@@ -542,6 +542,12 @@ variants.forEach((variant) => {
         expect(evt.args.assets).to.be.equal(0);
 
         expect(await vault.totalAssets()).to.equal(0);
+        expect(await dummyStrategy.getFail(vault, await vault.strategyStorageSlot())).to.deep.equal([
+          false,
+          false,
+          false,
+          false,
+        ]);
 
         // Setting again `strategy` works fine
         await expect(vault.connect(anon).setStrategy(strategy, encodeSwapConfig(swapConfig), false))
