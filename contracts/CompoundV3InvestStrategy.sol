@@ -142,6 +142,7 @@ contract CompoundV3InvestStrategy is IInvestStrategy {
     }
     // Show never reach to this revert, since method should be one of the enum values but leave it in case
     // we add new values in the enum and we forgot to add them here
+    // solhint-disable-next-line custom-errors,reason-string
     else revert();
 
     return bytes("");
