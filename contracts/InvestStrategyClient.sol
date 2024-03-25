@@ -20,18 +20,18 @@ library InvestStrategyClient {
   event DisconnectFailed(bytes reason);
 
   function dcConnect(IInvestStrategy strategy, bytes memory initStrategyData) internal {
-    address(strategy).functionDelegateCall(abi.encodeWithSelector(IInvestStrategy.connect.selector, initStrategyData));
+    address(strategy).functionDelegateCall(abi.encodeCall(IInvestStrategy.connect, initStrategyData));
   }
 
   function dcDisconnect(IInvestStrategy strategy, bool force) internal {
     if (force) {
       // solhint-disable-next-line avoid-low-level-calls
       (bool success, bytes memory returndata) = address(strategy).delegatecall(
-        abi.encodeWithSelector(IInvestStrategy.disconnect.selector, true)
+        abi.encodeCall(IInvestStrategy.disconnect, true)
       );
       if (!success) emit DisconnectFailed(returndata);
     } else {
-      address(strategy).functionDelegateCall(abi.encodeWithSelector(IInvestStrategy.disconnect.selector, false));
+      address(strategy).functionDelegateCall(abi.encodeCall(IInvestStrategy.disconnect, false));
     }
   }
 
@@ -39,12 +39,12 @@ library InvestStrategyClient {
     if (ignoreError) {
       // solhint-disable-next-line avoid-low-level-calls
       (bool success, bytes memory returndata) = address(strategy).delegatecall(
-        abi.encodeWithSelector(IInvestStrategy.withdraw.selector, assets)
+        abi.encodeCall(IInvestStrategy.withdraw, assets)
       );
       if (!success) emit WithdrawFailed(returndata);
       return success;
     } else {
-      address(strategy).functionDelegateCall(abi.encodeWithSelector(IInvestStrategy.withdraw.selector, assets));
+      address(strategy).functionDelegateCall(abi.encodeCall(IInvestStrategy.withdraw, assets));
       return true;
     }
   }
@@ -53,21 +53,19 @@ library InvestStrategyClient {
     if (ignoreError) {
       // solhint-disable-next-line avoid-low-level-calls
       (bool success, bytes memory returndata) = address(strategy).delegatecall(
-        abi.encodeWithSelector(IInvestStrategy.deposit.selector, assets)
+        abi.encodeCall(IInvestStrategy.deposit, assets)
       );
       if (!success) emit DepositFailed(returndata);
       return success;
     } else {
-      address(strategy).functionDelegateCall(abi.encodeWithSelector(IInvestStrategy.deposit.selector, assets));
+      address(strategy).functionDelegateCall(abi.encodeCall(IInvestStrategy.deposit, assets));
       return true;
     }
   }
 
   function dcForward(IInvestStrategy strategy, uint8 method, bytes memory extraData) internal returns (bytes memory) {
     return
-      address(strategy).functionDelegateCall(
-        abi.encodeWithSelector(IInvestStrategy.forwardEntryPoint.selector, method, extraData)
-      );
+      address(strategy).functionDelegateCall(abi.encodeCall(IInvestStrategy.forwardEntryPoint, (method, extraData)));
   }
 
   function strategyChange(

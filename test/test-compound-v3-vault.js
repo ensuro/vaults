@@ -223,6 +223,28 @@ variants.forEach((variant) => {
           )
         ).to.be.revertedWith("Initializable: contract is already initialized");
       });
+
+      it("Checks reverts if extraData is sent on initialization", async () => {
+        const { SingleStrategyERC4626, adminAddr, swapConfig, strategy, CompoundV3InvestStrategy } =
+          await helpers.loadFixture(variant.fixture);
+        await expect(
+          hre.upgrades.deployProxy(
+            SingleStrategyERC4626,
+            [
+              NAME,
+              SYMB,
+              adminAddr,
+              ADDRESSES.USDC,
+              await ethers.resolveAddress(strategy),
+              encodeSwapConfig(swapConfig) + "f".repeat(64),
+            ],
+            {
+              kind: "uups",
+              unsafeAllow: ["delegatecall"],
+            }
+          )
+        ).to.be.revertedWithCustomError(CompoundV3InvestStrategy, "NoExtraDataAllowed");
+      });
     }
 
     it("Checks entering the vault is permissioned, exit isn't", async () => {

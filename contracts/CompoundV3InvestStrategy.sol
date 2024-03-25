@@ -12,10 +12,9 @@ import {IExposeStorage} from "./interfaces/IExposeStorage.sol";
 import {InvestStrategyClient} from "./InvestStrategyClient.sol";
 
 /**
- * @title CompoundV3ERC4626
- * @dev Vault that invests/deinvests into CompoundV3 on each deposit/withdraw. Also, has a method to claim the rewards,
+ * @title CompoundV3InvestStrategy
+ * @dev Strategy that invests/deinvests into CompoundV3 on each deposit/withdraw. Also, has a method to claim the rewards,
  *      swap them, and reinvests the result into CompoundV3.
- *      Entering or exiting the vault is permissioned, requires LP_ROLE
  *
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
@@ -43,6 +42,7 @@ contract CompoundV3InvestStrategy is IInvestStrategy {
   error AccessControlUnauthorizedAccount(address account, bytes32 neededRole);
   error CanBeCalledOnlyThroughDelegateCall();
   error CannotDisconnectWithAssets();
+  error NoExtraDataAllowed();
 
   enum ForwardMethods {
     harvestRewards,
@@ -67,9 +67,7 @@ contract CompoundV3InvestStrategy is IInvestStrategy {
   }
 
   function connect(bytes memory initData) external virtual override onlyDelegCall {
-    SwapLibrary.SwapConfig memory swapConfig = abi.decode(initData, (SwapLibrary.SwapConfig));
-    swapConfig.validate();
-    StorageSlot.getBytesSlot(storageSlot).value = initData;
+    _setSwapConfigNoCheck(SwapLibrary.SwapConfig(SwapLibrary.SwapProtocol.undefined, 0, bytes("")), initData);
   }
 
   function disconnect(bool force) external virtual override onlyDelegCall {
@@ -120,9 +118,17 @@ contract CompoundV3InvestStrategy is IInvestStrategy {
   }
 
   function _setSwapConfig(bytes memory newSwapConfigAsBytes) internal onlyRole(SWAP_ADMIN_ROLE) {
+    _setSwapConfigNoCheck(_getSwapConfig(address(this)), newSwapConfigAsBytes);
+  }
+
+  function _setSwapConfigNoCheck(
+    SwapLibrary.SwapConfig memory oldSwapConfig,
+    bytes memory newSwapConfigAsBytes
+  ) internal {
     SwapLibrary.SwapConfig memory swapConfig = abi.decode(newSwapConfigAsBytes, (SwapLibrary.SwapConfig));
     swapConfig.validate();
-    emit SwapConfigChanged(_getSwapConfig(address(this)), swapConfig);
+    if (abi.encode(swapConfig).length != newSwapConfigAsBytes.length) revert NoExtraDataAllowed();
+    emit SwapConfigChanged(oldSwapConfig, swapConfig);
     StorageSlot.getBytesSlot(storageSlot).value = newSwapConfigAsBytes;
   }
 
@@ -134,6 +140,10 @@ contract CompoundV3InvestStrategy is IInvestStrategy {
     } else if (checkedMethod == ForwardMethods.setSwapConfig) {
       _setSwapConfig(params);
     }
+    // Show never reach to this revert, since method should be one of the enum values but leave it in case
+    // we add new values in the enum and we forgot to add them here
+    else revert();
+
     return bytes("");
   }
 

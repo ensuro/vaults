@@ -62,9 +62,6 @@ async function setUp() {
 }
 
 describe("SingleStrategyERC4626 contract tests", function () {
-  const trueAsBytes = ethers.AbiCoder.defaultAbiCoder().encode(["bool"], [true]);
-  const falseAsBytes = ethers.AbiCoder.defaultAbiCoder().encode(["bool"], [false]);
-
   it("Initializes the vault correctly", async () => {
     const { vault, strategy, currency } = await helpers.loadFixture(setUp);
 
@@ -94,6 +91,27 @@ describe("SingleStrategyERC4626 contract tests", function () {
       }
     );
     await expect(otherVault).to.be.revertedWithCustomError(DummyInvestStrategy, "Fail").withArgs("connect");
+  });
+
+  it("Initialization fails if extra data is sent", async () => {
+    const { SingleStrategyERC4626, strategy, currency, adminAddr, DummyInvestStrategy } =
+      await helpers.loadFixture(setUp);
+    const otherVault = hre.upgrades.deployProxy(
+      SingleStrategyERC4626,
+      [
+        NAME,
+        SYMB,
+        adminAddr,
+        await ethers.resolveAddress(currency),
+        await ethers.resolveAddress(strategy),
+        encodeDummyStorage({}) + "f".repeat(64),
+      ],
+      {
+        kind: "uups",
+        unsafeAllow: ["delegatecall"],
+      }
+    );
+    await expect(otherVault).to.be.revertedWithCustomError(DummyInvestStrategy, "NoExtraDataAllowed");
   });
 
   it("It sets and reads the right value from strategy storage", async () => {

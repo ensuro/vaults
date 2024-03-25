@@ -14,6 +14,7 @@ contract DummyInvestStrategy is IInvestStrategy {
   bytes32 public immutable storageSlot = InvestStrategyClient.makeStorageSlot(this);
 
   error Fail(string where);
+  error NoExtraDataAllowed();
 
   enum ForwardMethods {
     setFail
@@ -38,6 +39,7 @@ contract DummyInvestStrategy is IInvestStrategy {
 
   function connect(bytes memory initData) external override {
     DummyStorage memory fail = abi.decode(initData, (DummyStorage));
+    if (abi.encode(fail).length != initData.length) revert NoExtraDataAllowed();
     StorageSlot.getBytesSlot(storageSlot).value = initData;
     if (fail.failConnect) revert Fail("connect");
     emit Connect(initData);
