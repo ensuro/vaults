@@ -5,8 +5,7 @@ const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
 const { ethers } = hre;
-const { MaxUint256 } = hre.ethers;
-const { ZeroAddress } = ethers;
+const { MaxUint256, ZeroAddress } = hre.ethers;
 
 describe("SharedSmartVault contract tests", function () {
   let _A;
