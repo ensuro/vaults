@@ -28,9 +28,7 @@ contract CompoundV3InvestStrategy is IInvestStrategy {
   address private immutable __self = address(this);
   bytes32 public immutable storageSlot = InvestStrategyClient.makeStorageSlot(this);
 
-  /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   ICompoundV3 internal immutable _cToken;
-  /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   ICometRewards internal immutable _rewardsManager;
   address internal immutable _baseToken;
 

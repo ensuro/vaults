@@ -81,6 +81,28 @@ async function setUp() {
   };
 }
 
+const tagRegExp = new RegExp("\\[(?<neg>[!])?(?<variant>[a-zA-Z0-9]+)\\]", "gu");
+
+function tagit(testDescription, test) {
+  let any = false;
+  for (const m of testDescription.matchAll(tagRegExp)) {
+    if (m === undefined) break;
+    const neg = m.groups.neg !== undefined;
+    any = any || !neg;
+    if (m.groups.variant === this.name) {
+      if (!neg) {
+        // If tag found and not negated, run the it
+        it(testDescription, test);
+        return;
+      }
+      // If tag found and negated, don't run the it
+      return;
+    }
+  }
+  // If no positive tags, run the it
+  if (!any) it(testDescription, test);
+}
+
 const CompoundV3StrategyMethods = {
   harvestRewards: 0,
   setSwapConfig: 1,
@@ -89,6 +111,7 @@ const CompoundV3StrategyMethods = {
 const variants = [
   {
     name: "CompoundV3ERC4626",
+    tagit: tagit,
     fixture: async () => {
       const { currency, swapLibrary, adminAddr, swapConfig, admin, lp, lp2, guardian, anon } = await setUp();
       const CompoundV3ERC4626 = await ethers.getContractFactory("CompoundV3ERC4626", {
@@ -127,6 +150,7 @@ const variants = [
   },
   {
     name: "CompoundV3Strategy",
+    tagit: tagit,
     fixture: async () => {
       const { currency, swapLibrary, adminAddr, swapConfig, admin, lp, lp2, guardian, anon } = await setUp();
       const CompoundV3InvestStrategy = await ethers.getContractFactory("CompoundV3InvestStrategy", {
@@ -185,7 +209,7 @@ variants.forEach((variant) => {
       await setupChain(TEST_BLOCK);
     });
 
-    it("Checks vault inititializes correctly", async () => {
+    variant.tagit("Checks vault inititializes correctly", async () => {
       const { currency, vault, admin, anon } = await helpers.loadFixture(variant.fixture);
 
       expect(await vault.name()).to.equal(NAME);
@@ -196,58 +220,54 @@ variants.forEach((variant) => {
       expect(await vault.hasRole(getRole("DEFAULT_ADMIN_ROLE"), anon)).to.equal(false);
     });
 
-    if (variant.name === "CompoundV3ERC4626") {
-      it("Checks vault constructs with disabled initializer", async () => {
-        const { CompoundV3ERC4626, adminAddr, swapConfig } = await helpers.loadFixture(variant.fixture);
-        const newVault = await CompoundV3ERC4626.deploy(ADDRESSES.cUSDCv3, ADDRESSES.REWARDS);
-        await expect(newVault.deploymentTransaction()).to.emit(newVault, "Initialized");
-        await expect(newVault.initialize("foo", "bar", adminAddr, swapConfig)).to.be.revertedWith(
-          "Initializable: contract is already initialized"
-        );
-      });
-    }
+    variant.tagit("Checks vault constructs with disabled initializer [CompoundV3ERC4626]", async () => {
+      const { CompoundV3ERC4626, adminAddr, swapConfig } = await helpers.loadFixture(variant.fixture);
+      const newVault = await CompoundV3ERC4626.deploy(ADDRESSES.cUSDCv3, ADDRESSES.REWARDS);
+      await expect(newVault.deploymentTransaction()).to.emit(newVault, "Initialized");
+      await expect(newVault.initialize("foo", "bar", adminAddr, swapConfig)).to.be.revertedWith(
+        "Initializable: contract is already initialized"
+      );
+    });
 
-    if (variant.name === "CompoundV3Strategy") {
-      it("Checks vault constructs with disabled initializer", async () => {
-        const { SingleStrategyERC4626, adminAddr, swapConfig, strategy } = await helpers.loadFixture(variant.fixture);
-        const newVault = await SingleStrategyERC4626.deploy();
-        await expect(newVault.deploymentTransaction()).to.emit(newVault, "Initialized");
-        await expect(
-          newVault.initialize(
-            "foo",
-            "bar",
+    variant.tagit("Checks vault constructs with disabled initializer [CompoundV3Strategy]", async () => {
+      const { SingleStrategyERC4626, adminAddr, swapConfig, strategy } = await helpers.loadFixture(variant.fixture);
+      const newVault = await SingleStrategyERC4626.deploy();
+      await expect(newVault.deploymentTransaction()).to.emit(newVault, "Initialized");
+      await expect(
+        newVault.initialize(
+          "foo",
+          "bar",
+          adminAddr,
+          ADDRESSES.USDC,
+          await ethers.resolveAddress(strategy),
+          encodeSwapConfig(swapConfig)
+        )
+      ).to.be.revertedWith("Initializable: contract is already initialized");
+    });
+
+    variant.tagit("Checks reverts if extraData is sent on initialization [CompoundV3Strategy]", async () => {
+      const { SingleStrategyERC4626, adminAddr, swapConfig, strategy, CompoundV3InvestStrategy } =
+        await helpers.loadFixture(variant.fixture);
+      await expect(
+        hre.upgrades.deployProxy(
+          SingleStrategyERC4626,
+          [
+            NAME,
+            SYMB,
             adminAddr,
             ADDRESSES.USDC,
             await ethers.resolveAddress(strategy),
-            encodeSwapConfig(swapConfig)
-          )
-        ).to.be.revertedWith("Initializable: contract is already initialized");
-      });
+            encodeSwapConfig(swapConfig) + "f".repeat(64),
+          ],
+          {
+            kind: "uups",
+            unsafeAllow: ["delegatecall"],
+          }
+        )
+      ).to.be.revertedWithCustomError(CompoundV3InvestStrategy, "NoExtraDataAllowed");
+    });
 
-      it("Checks reverts if extraData is sent on initialization", async () => {
-        const { SingleStrategyERC4626, adminAddr, swapConfig, strategy, CompoundV3InvestStrategy } =
-          await helpers.loadFixture(variant.fixture);
-        await expect(
-          hre.upgrades.deployProxy(
-            SingleStrategyERC4626,
-            [
-              NAME,
-              SYMB,
-              adminAddr,
-              ADDRESSES.USDC,
-              await ethers.resolveAddress(strategy),
-              encodeSwapConfig(swapConfig) + "f".repeat(64),
-            ],
-            {
-              kind: "uups",
-              unsafeAllow: ["delegatecall"],
-            }
-          )
-        ).to.be.revertedWithCustomError(CompoundV3InvestStrategy, "NoExtraDataAllowed");
-      });
-    }
-
-    it("Checks entering the vault is permissioned, exit isn't", async () => {
+    variant.tagit("Checks entering the vault is permissioned, exit isn't", async () => {
       const { currency, vault, anon, lp } = await helpers.loadFixture(variant.fixture);
 
       await expect(vault.connect(anon).deposit(_A(100), anon)).to.be.revertedWith("ERC4626: deposit more than max");
@@ -472,93 +492,91 @@ variants.forEach((variant) => {
       expect(await currency.balanceOf(lp)).to.closeTo(_A(INITIAL), MCENT * 10n);
     });
 
-    if (variant.name === "CompoundV3Strategy") {
-      it("Checks only authorized can setStrategy", async () => {
-        const { currency, vault, lp, swapConfig, strategy, anon, admin, CompoundV3InvestStrategy } =
-          await helpers.loadFixture(variant.fixture);
+    variant.tagit("Checks only authorized can setStrategy [CompoundV3Strategy]", async () => {
+      const { currency, vault, lp, swapConfig, strategy, anon, admin, CompoundV3InvestStrategy } =
+        await helpers.loadFixture(variant.fixture);
 
-        expect(await vault.strategy()).to.equal(strategy);
-        await expect(vault.connect(lp).mint(_A(3000), lp)).not.to.be.reverted;
+      expect(await vault.strategy()).to.equal(strategy);
+      await expect(vault.connect(lp).mint(_A(3000), lp)).not.to.be.reverted;
 
-        expect(await vault.totalAssets()).to.closeTo(_A(3000), MCENT);
-        expect(await vault.maxRedeem(lp)).to.closeTo(_A(3000), MCENT);
-        expect(await vault.maxWithdraw(lp)).to.closeTo(_A(3000), MCENT);
+      expect(await vault.totalAssets()).to.closeTo(_A(3000), MCENT);
+      expect(await vault.maxRedeem(lp)).to.closeTo(_A(3000), MCENT);
+      expect(await vault.maxWithdraw(lp)).to.closeTo(_A(3000), MCENT);
 
-        await expect(
-          vault.connect(anon).setStrategy(ZeroAddress, encodeSwapConfig(swapConfig), false)
-        ).to.be.revertedWith(accessControlMessage(anon, null, "SET_STRATEGY_ROLE"));
-        await vault.connect(admin).grantRole(getRole("SET_STRATEGY_ROLE"), anon);
+      await expect(
+        vault.connect(anon).setStrategy(ZeroAddress, encodeSwapConfig(swapConfig), false)
+      ).to.be.revertedWith(accessControlMessage(anon, null, "SET_STRATEGY_ROLE"));
+      await vault.connect(admin).grantRole(getRole("SET_STRATEGY_ROLE"), anon);
 
-        await expect(vault.connect(anon).setStrategy(ZeroAddress, encodeSwapConfig(swapConfig), false)).to.be.reverted;
+      await expect(vault.connect(anon).setStrategy(ZeroAddress, encodeSwapConfig(swapConfig), false)).to.be.reverted;
 
-        // If I pause withdraw, it can't withdraw and setStrategy fails
-        await helpers.impersonateAccount(ADDRESSES.cUSDCv3_GUARDIAN);
-        await helpers.setBalance(ADDRESSES.cUSDCv3_GUARDIAN, ethers.parseEther("100"));
-        const compGuardian = await ethers.getSigner(ADDRESSES.cUSDCv3_GUARDIAN);
+      // If I pause withdraw, it can't withdraw and setStrategy fails
+      await helpers.impersonateAccount(ADDRESSES.cUSDCv3_GUARDIAN);
+      await helpers.setBalance(ADDRESSES.cUSDCv3_GUARDIAN, ethers.parseEther("100"));
+      const compGuardian = await ethers.getSigner(ADDRESSES.cUSDCv3_GUARDIAN);
 
-        const cUSDCv3 = await ethers.getContractAt(CometABI, ADDRESSES.cUSDCv3);
-        await cUSDCv3.connect(compGuardian).pause(false, false, true, false, false);
+      const cUSDCv3 = await ethers.getContractAt(CometABI, ADDRESSES.cUSDCv3);
+      await cUSDCv3.connect(compGuardian).pause(false, false, true, false, false);
 
-        expect(await vault.maxRedeem(lp)).to.equal(0);
-        expect(await vault.maxWithdraw(lp)).to.equal(0);
+      expect(await vault.maxRedeem(lp)).to.equal(0);
+      expect(await vault.maxWithdraw(lp)).to.equal(0);
 
-        await expect(
-          vault.connect(anon).setStrategy(strategy, encodeSwapConfig(swapConfig), false)
-        ).to.be.revertedWithCustomError(cUSDCv3, "Paused");
+      await expect(
+        vault.connect(anon).setStrategy(strategy, encodeSwapConfig(swapConfig), false)
+      ).to.be.revertedWithCustomError(cUSDCv3, "Paused");
 
-        const DummyInvestStrategy = await ethers.getContractFactory("DummyInvestStrategy");
-        const otherStrategy = await CompoundV3InvestStrategy.deploy(ADDRESSES.cUSDCv3, ADDRESSES.REWARDS);
-        const dummyStrategy = await DummyInvestStrategy.deploy(ADDRESSES.USDC);
+      const DummyInvestStrategy = await ethers.getContractFactory("DummyInvestStrategy");
+      const otherStrategy = await CompoundV3InvestStrategy.deploy(ADDRESSES.cUSDCv3, ADDRESSES.REWARDS);
+      const dummyStrategy = await DummyInvestStrategy.deploy(ADDRESSES.USDC);
 
-        // But if I force, it works
-        await expect(vault.connect(anon).setStrategy(otherStrategy, encodeSwapConfig(swapConfig), true))
-          .to.emit(vault, "StrategyChanged")
-          .withArgs(strategy, otherStrategy)
-          .to.emit(vault, "WithdrawFailed")
-          .withArgs("0x9e87fac8"); // First chars keccak256("Paused()")
+      // But if I force, it works
+      await expect(vault.connect(anon).setStrategy(otherStrategy, encodeSwapConfig(swapConfig), true))
+        .to.emit(vault, "StrategyChanged")
+        .withArgs(strategy, otherStrategy)
+        .to.emit(vault, "WithdrawFailed")
+        .withArgs("0x9e87fac8"); // First chars keccak256("Paused()")
 
-        expect(await vault.totalAssets()).to.closeTo(_A(3000), CENT);
+      expect(await vault.totalAssets()).to.closeTo(_A(3000), CENT);
 
-        // Setting a dummyStrategy returns totalAssets == 0 because can't see the assets in Compound
-        let tx = await vault.connect(anon).setStrategy(dummyStrategy, encodeDummyStorage({}), true);
-        await expect(tx)
-          .to.emit(vault, "StrategyChanged")
-          .withArgs(otherStrategy, dummyStrategy)
-          .to.emit(vault, "WithdrawFailed")
-          .withArgs("0x9e87fac8"); // First chars keccak256("Paused()")
-        let receipt = await tx.wait();
-        let evt = getTransactionEvent(dummyStrategy.interface, receipt, "Deposit");
-        expect(evt).not.equal(null);
-        expect(evt.args.assets).to.be.equal(0);
+      // Setting a dummyStrategy returns totalAssets == 0 because can't see the assets in Compound
+      let tx = await vault.connect(anon).setStrategy(dummyStrategy, encodeDummyStorage({}), true);
+      await expect(tx)
+        .to.emit(vault, "StrategyChanged")
+        .withArgs(otherStrategy, dummyStrategy)
+        .to.emit(vault, "WithdrawFailed")
+        .withArgs("0x9e87fac8"); // First chars keccak256("Paused()")
+      let receipt = await tx.wait();
+      let evt = getTransactionEvent(dummyStrategy.interface, receipt, "Deposit");
+      expect(evt).not.equal(null);
+      expect(evt.args.assets).to.be.equal(0);
 
-        expect(await vault.totalAssets()).to.equal(0);
-        expect(await dummyStrategy.getFail(vault)).to.deep.equal([false, false, false, false]);
+      expect(await vault.totalAssets()).to.equal(0);
+      expect(await dummyStrategy.getFail(vault)).to.deep.equal([false, false, false, false]);
 
-        // Setting again `strategy` works fine
-        await expect(vault.connect(anon).setStrategy(strategy, encodeSwapConfig(swapConfig), false))
-          .to.emit(vault, "StrategyChanged")
-          .withArgs(dummyStrategy, strategy);
-        expect(await vault.totalAssets()).to.closeTo(_A(3000), CENT);
-        expect(await cUSDCv3.balanceOf(vault)).to.closeTo(_A(3000), CENT);
+      // Setting again `strategy` works fine
+      await expect(vault.connect(anon).setStrategy(strategy, encodeSwapConfig(swapConfig), false))
+        .to.emit(vault, "StrategyChanged")
+        .withArgs(dummyStrategy, strategy);
+      expect(await vault.totalAssets()).to.closeTo(_A(3000), CENT);
+      expect(await cUSDCv3.balanceOf(vault)).to.closeTo(_A(3000), CENT);
 
-        // Now I unpause Compound
-        await cUSDCv3.connect(compGuardian).pause(false, false, false, false, false);
+      // Now I unpause Compound
+      await cUSDCv3.connect(compGuardian).pause(false, false, false, false, false);
 
-        // Setting a dummyStrategy sends the assets to the vault
-        tx = await vault.connect(anon).setStrategy(dummyStrategy, encodeDummyStorage({}), false);
-        await expect(tx)
-          .to.emit(vault, "StrategyChanged")
-          .withArgs(strategy, dummyStrategy)
-          .not.to.emit(vault, "WithdrawFailed");
-        receipt = await tx.wait();
-        evt = getTransactionEvent(dummyStrategy.interface, receipt, "Deposit");
-        expect(evt).not.equal(null);
-        expect(evt.args.assets).to.be.closeTo(_A(3000), CENT);
+      // Setting a dummyStrategy sends the assets to the vault
+      tx = await vault.connect(anon).setStrategy(dummyStrategy, encodeDummyStorage({}), false);
+      await expect(tx)
+        .to.emit(vault, "StrategyChanged")
+        .withArgs(strategy, dummyStrategy)
+        .not.to.emit(vault, "WithdrawFailed");
+      receipt = await tx.wait();
+      evt = getTransactionEvent(dummyStrategy.interface, receipt, "Deposit");
+      expect(evt).not.equal(null);
+      expect(evt.args.assets).to.be.closeTo(_A(3000), CENT);
 
-        expect(await vault.totalAssets()).to.closeTo(_A(3000), CENT);
-        expect(await cUSDCv3.balanceOf(vault)).to.equal(0);
-        expect(await currency.balanceOf(vault)).to.closeTo(_A(3000), CENT);
-      });
-    }
+      expect(await vault.totalAssets()).to.closeTo(_A(3000), CENT);
+      expect(await cUSDCv3.balanceOf(vault)).to.equal(0);
+      expect(await currency.balanceOf(vault)).to.closeTo(_A(3000), CENT);
+    });
   });
 });
