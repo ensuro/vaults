@@ -4,11 +4,8 @@ pragma solidity 0.8.16;
 import {IPool} from "./dependencies/aave-v3/IPool.sol";
 import {DataTypes} from "./dependencies/aave-v3/DataTypes.sol";
 import {ReserveConfiguration} from "./dependencies/aave-v3/ReserveConfiguration.sol";
-import {IPoolAddressesProvider} from "./dependencies/aave-v3/IPoolAddressesProvider.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
-import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {IInvestStrategy} from "./interfaces/IInvestStrategy.sol";
-import {IExposeStorage} from "./interfaces/IExposeStorage.sol";
 import {InvestStrategyClient} from "./InvestStrategyClient.sol";
 
 /**
@@ -36,12 +33,6 @@ contract AaveV3InvestStrategy is IInvestStrategy {
 
   modifier onlyDelegCall() {
     if (address(this) == __self) revert CanBeCalledOnlyThroughDelegateCall();
-    _;
-  }
-
-  modifier onlyRole(bytes32 role) {
-    if (!IAccessControl(address(this)).hasRole(role, msg.sender))
-      revert AccessControlUnauthorizedAccount(msg.sender, role);
     _;
   }
 
@@ -96,6 +87,7 @@ contract AaveV3InvestStrategy is IInvestStrategy {
   }
 
   function forwardEntryPoint(uint8, bytes memory) external view onlyDelegCall returns (bytes memory) {
+    // solhint-disable-next-line custom-errors,reason-string
     revert();
   }
 }

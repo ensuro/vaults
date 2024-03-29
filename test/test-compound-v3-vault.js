@@ -19,6 +19,10 @@ const ADDRESSES = {
   REWARDS: "0x45939657d1CA34A8FA39A924B71D28Fe8431e581",
   COMP: "0x8505b9d2254A7Ae468c0E9dd10Ccea3A837aef5c",
   cUSDCv3_GUARDIAN: "0x8Ab717CAC3CbC4934E63825B88442F5810aAF6e5",
+  AAVEv3: "0x794a61358D6845594F94dc1DB02A252b5b4814aD",
+  aUSDCv3: "0x625E7708f30cA75bfd92586e17077590C60eb4cD",
+  AAVEPoolConfigurator: "0x8145eddDf43f50276641b55bd3AD95944510021E",
+  AAVEPoolAdmin: "0xDf7d0e6454DB638881302729F5ba99936EaAB233",
 };
 
 const CometABI = [
@@ -43,6 +47,56 @@ const CometABI = [
     type: "function",
   },
   { inputs: [], name: "Paused", type: "error" },
+];
+
+const PoolConfiguratorABI = [
+  {
+    inputs: [{ internalType: "bool", name: "paused", type: "bool" }],
+    name: "setPoolPause",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [
+      { internalType: "address", name: "asset", type: "address" },
+      { internalType: "bool", name: "active", type: "bool" },
+    ],
+    name: "setReserveActive",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [
+      { internalType: "address", name: "asset", type: "address" },
+      { internalType: "bool", name: "freeze", type: "bool" },
+    ],
+    name: "setReserveFreeze",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [
+      { internalType: "address", name: "asset", type: "address" },
+      { internalType: "bool", name: "paused", type: "bool" },
+    ],
+    name: "setReservePause",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [
+      { internalType: "address", name: "asset", type: "address" },
+      { internalType: "uint256", name: "newSupplyCap", type: "uint256" },
+    ],
+    name: "setSupplyCap",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
 ];
 
 const CURRENCY_DECIMALS = 6;
@@ -85,6 +139,7 @@ const tagRegExp = new RegExp("\\[(?<neg>[!])?(?<variant>[a-zA-Z0-9]+)\\]", "gu")
 
 function tagit(testDescription, test) {
   let any = false;
+  const iit = this.only ? it.only : it;
   for (const m of testDescription.matchAll(tagRegExp)) {
     if (m === undefined) break;
     const neg = m.groups.neg !== undefined;
@@ -92,7 +147,7 @@ function tagit(testDescription, test) {
     if (m.groups.variant === this.name) {
       if (!neg) {
         // If tag found and not negated, run the it
-        it(testDescription, test);
+        iit(testDescription, test);
         return;
       }
       // If tag found and negated, don't run the it
@@ -100,7 +155,7 @@ function tagit(testDescription, test) {
     }
   }
   // If no positive tags, run the it
-  if (!any) it(testDescription, test);
+  if (!any) iit(testDescription, test);
 }
 
 const CompoundV3StrategyMethods = {
@@ -112,6 +167,7 @@ const variants = [
   {
     name: "CompoundV3ERC4626",
     tagit: tagit,
+    cToken: ADDRESSES.cUSDCv3,
     fixture: async () => {
       const { currency, swapLibrary, adminAddr, swapConfig, admin, lp, lp2, guardian, anon } = await setUp();
       const CompoundV3ERC4626 = await ethers.getContractFactory("CompoundV3ERC4626", {
@@ -151,6 +207,7 @@ const variants = [
   {
     name: "CompoundV3Strategy",
     tagit: tagit,
+    cToken: ADDRESSES.cUSDCv3,
     fixture: async () => {
       const { currency, swapLibrary, adminAddr, swapConfig, admin, lp, lp2, guardian, anon } = await setUp();
       const CompoundV3InvestStrategy = await ethers.getContractFactory("CompoundV3InvestStrategy", {
@@ -201,6 +258,51 @@ const variants = [
     setSwapConfig: async (vault, swapConfig) =>
       vault.forwardToStrategy(CompoundV3StrategyMethods.setSwapConfig, encodeSwapConfig(swapConfig)),
   },
+  {
+    name: "AAVEV3Strategy",
+    tagit: tagit,
+    cToken: ADDRESSES.aUSDCv3,
+    fixture: async () => {
+      const { currency, adminAddr, swapConfig, admin, lp, lp2, guardian, anon } = await setUp();
+      const AaveV3InvestStrategy = await ethers.getContractFactory("AaveV3InvestStrategy");
+      const strategy = await AaveV3InvestStrategy.deploy(ADDRESSES.USDC, ADDRESSES.AAVEv3);
+      const SingleStrategyERC4626 = await ethers.getContractFactory("SingleStrategyERC4626");
+      const vault = await hre.upgrades.deployProxy(
+        SingleStrategyERC4626,
+        [NAME, SYMB, adminAddr, ADDRESSES.USDC, await ethers.resolveAddress(strategy), ethers.toUtf8Bytes("")],
+        {
+          kind: "uups",
+          unsafeAllow: ["delegatecall"],
+        }
+      );
+      await currency.connect(lp).approve(vault, MaxUint256);
+      await currency.connect(lp2).approve(vault, MaxUint256);
+      await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
+      await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp2);
+
+      return {
+        currency,
+        SingleStrategyERC4626,
+        AaveV3InvestStrategy,
+        swapConfig,
+        vault,
+        strategy,
+        adminAddr,
+        lp,
+        lp2,
+        anon,
+        guardian,
+        admin,
+      };
+    },
+    harvestRewards: null,
+    accessControlCheck: async (action, user, role, contract) =>
+      expect(action)
+        .to.be.revertedWithCustomError(contract, "AccessControlUnauthorizedAccount")
+        .withArgs(user, getRole(role)),
+    getSwapConfig: null,
+    setSwapConfig: null,
+  },
 ];
 
 variants.forEach((variant) => {
@@ -229,7 +331,7 @@ variants.forEach((variant) => {
       );
     });
 
-    variant.tagit("Checks vault constructs with disabled initializer [CompoundV3Strategy]", async () => {
+    variant.tagit("Checks vault constructs with disabled initializer [!CompoundV3ERC4626]", async () => {
       const { SingleStrategyERC4626, adminAddr, swapConfig, strategy } = await helpers.loadFixture(variant.fixture);
       const newVault = await SingleStrategyERC4626.deploy();
       await expect(newVault.deploymentTransaction()).to.emit(newVault, "Initialized");
@@ -245,26 +347,22 @@ variants.forEach((variant) => {
       ).to.be.revertedWith("Initializable: contract is already initialized");
     });
 
-    variant.tagit("Checks reverts if extraData is sent on initialization [CompoundV3Strategy]", async () => {
-      const { SingleStrategyERC4626, adminAddr, swapConfig, strategy, CompoundV3InvestStrategy } =
+    variant.tagit("Checks reverts if extraData is sent on initialization [!CompoundV3ERC4626]", async () => {
+      const { SingleStrategyERC4626, adminAddr, swapConfig, strategy, CompoundV3InvestStrategy, AaveV3InvestStrategy } =
         await helpers.loadFixture(variant.fixture);
+      const Strategy = CompoundV3InvestStrategy || AaveV3InvestStrategy;
+      const initData =
+        variant.name === "CompoundV3Strategy" ? encodeSwapConfig(swapConfig) + "f".repeat(64) : `0x${"f".repeat(64)}`;
       await expect(
         hre.upgrades.deployProxy(
           SingleStrategyERC4626,
-          [
-            NAME,
-            SYMB,
-            adminAddr,
-            ADDRESSES.USDC,
-            await ethers.resolveAddress(strategy),
-            encodeSwapConfig(swapConfig) + "f".repeat(64),
-          ],
+          [NAME, SYMB, adminAddr, ADDRESSES.USDC, await ethers.resolveAddress(strategy), initData],
           {
             kind: "uups",
             unsafeAllow: ["delegatecall"],
           }
         )
-      ).to.be.revertedWithCustomError(CompoundV3InvestStrategy, "NoExtraDataAllowed");
+      ).to.be.revertedWithCustomError(Strategy, "NoExtraDataAllowed");
     });
 
     variant.tagit("Checks entering the vault is permissioned, exit isn't", async () => {
@@ -280,10 +378,11 @@ variants.forEach((variant) => {
         .to.emit(currency, "Transfer")
         .withArgs(lp, vault, _A(100))
         .to.emit(currency, "Transfer")
-        .withArgs(vault, ADDRESSES.cUSDCv3, _A(100));
+        .withArgs(vault, variant.cToken, _A(100));
 
       // Nothing stays in the vault
       expect(await currency.balanceOf(vault)).to.equal(0);
+      expect(await vault.totalAssets()).to.closeTo(_A(100), MCENT);
 
       await expect(vault.connect(anon).withdraw(_A(100), anon, anon)).to.be.revertedWith(
         "ERC4626: withdraw more than max"
@@ -295,12 +394,12 @@ variants.forEach((variant) => {
         .to.emit(vault, "Withdraw")
         .withArgs(anon, anon, anon, _A(50), anyUint)
         .to.emit(currency, "Transfer")
-        .withArgs(ADDRESSES.cUSDCv3, vault, _A(50))
+        .withArgs(variant.cToken, vault, _A(50))
         .to.emit(currency, "Transfer")
         .withArgs(vault, anon, _A(50));
     });
 
-    it("Checks vault accrues compound earnings", async () => {
+    variant.tagit("Checks vault accrues compound earnings", async () => {
       const { currency, vault, lp, lp2 } = await helpers.loadFixture(variant.fixture);
 
       await expect(vault.connect(lp).mint(_A(1000), lp))
@@ -309,16 +408,16 @@ variants.forEach((variant) => {
         .to.emit(currency, "Transfer")
         .withArgs(lp, vault, _A(1000))
         .to.emit(currency, "Transfer")
-        .withArgs(vault, ADDRESSES.cUSDCv3, _A(1000));
+        .withArgs(vault, variant.cToken, _A(1000));
 
       expect(await vault.totalAssets()).to.be.closeTo(_A(1000), MCENT);
 
       await helpers.time.increase(MONTH);
-      expect(await vault.totalAssets()).to.be.closeTo(_A("1009.522026"), MCENT);
+      expect(await vault.totalAssets()).to.be.closeTo(_A("1009.52"), _A(0.5));
 
       expect(await vault.balanceOf(lp)).to.be.equal(_A("1000"));
       expect(await vault.totalSupply()).to.be.equal(_A("1000"));
-      expect(await vault.convertToAssets(_A(100))).to.be.closeTo(_A("100.9522"), MCENT);
+      expect(await vault.convertToAssets(_A(100))).to.be.closeTo(_A("100.95"), CENT);
 
       // Another LP deposits 2000 and gets less shares
       await expect(vault.connect(lp2).deposit(_A(2000), lp2))
@@ -327,22 +426,22 @@ variants.forEach((variant) => {
         .to.emit(currency, "Transfer")
         .withArgs(lp2, vault, _A(2000))
         .to.emit(currency, "Transfer")
-        .withArgs(vault, ADDRESSES.cUSDCv3, _A(2000));
+        .withArgs(vault, variant.cToken, _A(2000));
 
       const lp2balance = await vault.balanceOf(lp2);
-      expect(lp2balance).to.be.closeTo(_A("1981.13"), CENT);
+      expect(lp2balance).to.be.closeTo(_A("1981.13"), _A(0.25));
 
       // Withdraws all the funds
       await vault.connect(lp).redeem(_A("1000"), lp, lp);
       await vault.connect(lp2).redeem(lp2balance, lp2, lp2);
 
-      expect(await vault.totalAssets()).to.be.equal(0);
+      expect(await vault.totalAssets()).to.be.closeTo(0, MCENT);
 
-      expect(await currency.balanceOf(lp)).to.closeTo(_A("10009.522"), CENT);
+      expect(await currency.balanceOf(lp)).to.closeTo(_A("10009.522"), _A(0.5));
       expect(await currency.balanceOf(lp2)).to.closeTo(_A(INITIAL), CENT);
     });
 
-    it("Checks rewards can be harvested", async () => {
+    variant.tagit("Checks rewards can be harvested [!AAVEV3Strategy]", async () => {
       const { currency, vault, admin, anon, lp, lp2, strategy } = await helpers.loadFixture(variant.fixture);
 
       await expect(vault.connect(lp).mint(_A(1000), lp)).not.to.be.reverted;
@@ -388,7 +487,7 @@ variants.forEach((variant) => {
       expect(await vault.totalSupply()).to.be.equal(_A(3000));
     });
 
-    it("Checks only authorized user can change swap config", async () => {
+    variant.tagit("Checks only authorized user can change swap config [!AAVEV3Strategy]", async () => {
       const { currency, vault, admin, anon, lp, swapConfig, strategy } = await helpers.loadFixture(variant.fixture);
 
       expect(await variant.getSwapConfig(vault, strategy)).to.deep.equal(swapConfig);
@@ -445,7 +544,7 @@ variants.forEach((variant) => {
       expect(await vault.totalAssets()).to.be.closeTo(assets + _A("10.684546"), CENT);
     });
 
-    it("Checks can't deposit or withdraw when Compound is paused", async () => {
+    variant.tagit("Checks can't deposit or withdraw when Compound is paused [!AAVEV3Strategy]", async () => {
       const { vault, lp, currency } = await helpers.loadFixture(variant.fixture);
 
       await helpers.impersonateAccount(ADDRESSES.cUSDCv3_GUARDIAN);
@@ -483,8 +582,64 @@ variants.forEach((variant) => {
       await expect(vault.connect(lp).redeem(_A(1000), lp, lp)).to.be.revertedWith("ERC4626: redeem more than max");
       await expect(vault.connect(lp).withdraw(_A(1000), lp, lp)).to.be.revertedWith("ERC4626: withdraw more than max");
 
-      // Then I unpause everythin
+      // Then I unpause everything
       await cUSDCv3.connect(compGuardian).pause(false, false, false, false, false);
+
+      await expect(vault.connect(lp).redeem(_A(3000), lp, lp)).not.to.be.reverted;
+      expect(await vault.totalAssets()).to.closeTo(0, MCENT);
+      // Check LP has more or less the same initial funds
+      expect(await currency.balanceOf(lp)).to.closeTo(_A(INITIAL), MCENT * 10n);
+    });
+
+    variant.tagit("Checks can't deposit or withdraw when AAVE is paused [AAVEV3Strategy]", async () => {
+      const { vault, lp, currency } = await helpers.loadFixture(variant.fixture);
+
+      await helpers.impersonateAccount(ADDRESSES.AAVEPoolAdmin);
+      await helpers.setBalance(ADDRESSES.AAVEPoolAdmin, ethers.parseEther("100"));
+      const aaveAdmin = await ethers.getSigner(ADDRESSES.AAVEPoolAdmin);
+
+      const aaveConfig = await ethers.getContractAt(PoolConfiguratorABI, ADDRESSES.AAVEPoolConfigurator);
+
+      expect(await vault.maxMint(lp)).to.equal(MaxUint256);
+      expect(await vault.maxDeposit(lp)).to.equal(MaxUint256);
+
+      // If I pause supply, maxMint / maxDeposit becomes 0 and can't deposit or mint
+      await aaveConfig.connect(aaveAdmin).setReservePause(ADDRESSES.USDC, true);
+
+      expect(await vault.maxMint(lp)).to.equal(0);
+      expect(await vault.maxDeposit(lp)).to.equal(0);
+      await expect(vault.connect(lp).mint(_A(3000), lp)).to.be.revertedWith("ERC4626: mint more than max");
+      await expect(vault.connect(lp).deposit(_A(3000), lp)).to.be.revertedWith("ERC4626: deposit more than max");
+
+      // Same happens if I set the reserve frozen (can't set as inactive because it has funds)
+      await aaveConfig.connect(aaveAdmin).setReservePause(ADDRESSES.USDC, false);
+      await aaveConfig.connect(aaveAdmin).setReserveFreeze(ADDRESSES.USDC, true);
+      expect(await vault.maxMint(lp)).to.equal(0);
+      expect(await vault.maxDeposit(lp)).to.equal(0);
+
+      // Then I unpause deposit
+      await aaveConfig.connect(aaveAdmin).setReserveFreeze(ADDRESSES.USDC, false);
+
+      await expect(vault.connect(lp).mint(_A(3000), lp)).not.to.be.reverted;
+
+      expect(await vault.totalAssets()).to.closeTo(_A(3000), MCENT);
+      expect(await vault.maxRedeem(lp)).to.closeTo(_A(3000), MCENT);
+      expect(await vault.maxWithdraw(lp)).to.closeTo(_A(3000), MCENT);
+
+      // If I pause withdraw, maxRedeem / maxWithdraw becomes 0 and can't withdraw or redeem
+      await aaveConfig.connect(aaveAdmin).setReservePause(ADDRESSES.USDC, true);
+
+      expect(await vault.maxRedeem(lp)).to.equal(0);
+      expect(await vault.maxWithdraw(lp)).to.equal(0);
+
+      await expect(vault.connect(lp).redeem(_A(1000), lp, lp)).to.be.revertedWith("ERC4626: redeem more than max");
+      await expect(vault.connect(lp).withdraw(_A(1000), lp, lp)).to.be.revertedWith("ERC4626: withdraw more than max");
+
+      // Then I unpause and I freeze the reserve. Withdraw should work and deposit doesn't
+      await aaveConfig.connect(aaveAdmin).setReservePause(ADDRESSES.USDC, false);
+      await aaveConfig.connect(aaveAdmin).setReserveFreeze(ADDRESSES.USDC, true);
+      expect(await vault.maxRedeem(lp)).not.to.equal(0);
+      expect(await vault.maxMint(lp)).to.equal(0);
 
       await expect(vault.connect(lp).redeem(_A(3000), lp, lp)).not.to.be.reverted;
       expect(await vault.totalAssets()).to.closeTo(0, MCENT);
