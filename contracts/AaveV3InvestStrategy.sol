@@ -74,11 +74,11 @@ contract AaveV3InvestStrategy is IInvestStrategy {
   }
 
   function withdraw(uint256 assets) external virtual override onlyDelegCall {
-    _aave.withdraw(address(_asset), assets, address(this));
+    if (assets != 0) _aave.withdraw(address(_asset), assets, address(this));
   }
 
   function deposit(uint256 assets) external virtual override onlyDelegCall {
-    _supply(assets);
+    if (assets != 0) _supply(assets);
   }
 
   function _supply(uint256 assets) internal {

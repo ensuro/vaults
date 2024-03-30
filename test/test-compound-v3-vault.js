@@ -137,9 +137,9 @@ async function setUp() {
 
 const tagRegExp = new RegExp("\\[(?<neg>[!])?(?<variant>[a-zA-Z0-9]+)\\]", "gu");
 
-function tagit(testDescription, test) {
+function tagit(testDescription, test, only = false) {
   let any = false;
-  const iit = this.only ? it.only : it;
+  const iit = only || this.only ? it.only : it;
   for (const m of testDescription.matchAll(tagRegExp)) {
     if (m === undefined) break;
     const neg = m.groups.neg !== undefined;
@@ -651,6 +651,9 @@ variants.forEach((variant) => {
       const { currency, vault, lp, swapConfig, strategy, anon, admin, CompoundV3InvestStrategy } =
         await helpers.loadFixture(variant.fixture);
 
+      // Just to increase coverage, I check forwardEntryPoint reverts with wrong input
+      await expect(vault.forwardToStrategy(123, ethers.toUtf8Bytes(""))).to.be.reverted;
+
       expect(await vault.strategy()).to.equal(strategy);
       await expect(vault.connect(lp).mint(_A(3000), lp)).not.to.be.reverted;
 
@@ -732,6 +735,115 @@ variants.forEach((variant) => {
       expect(await vault.totalAssets()).to.closeTo(_A(3000), CENT);
       expect(await cUSDCv3.balanceOf(vault)).to.equal(0);
       expect(await currency.balanceOf(vault)).to.closeTo(_A(3000), CENT);
+    });
+
+    variant.tagit("Checks only authorized can setStrategy [AAVEV3Strategy]", async () => {
+      const { currency, vault, lp, strategy, anon, admin, AaveV3InvestStrategy } = await helpers.loadFixture(
+        variant.fixture
+      );
+
+      // Just to increase coverage, I check forwardEntryPoint reverts
+      await expect(vault.forwardToStrategy(123, ethers.toUtf8Bytes(""))).to.be.reverted;
+
+      expect(await vault.strategy()).to.equal(strategy);
+      await expect(vault.connect(lp).mint(_A(3000), lp)).not.to.be.reverted;
+
+      expect(await vault.totalAssets()).to.closeTo(_A(3000), MCENT);
+      expect(await vault.maxRedeem(lp)).to.closeTo(_A(3000), MCENT);
+      expect(await vault.maxWithdraw(lp)).to.closeTo(_A(3000), MCENT);
+
+      await expect(vault.connect(anon).setStrategy(ZeroAddress, ethers.toUtf8Bytes(""), false)).to.be.revertedWith(
+        accessControlMessage(anon, null, "SET_STRATEGY_ROLE")
+      );
+      await vault.connect(admin).grantRole(getRole("SET_STRATEGY_ROLE"), anon);
+
+      await expect(vault.connect(anon).setStrategy(ZeroAddress, ethers.toUtf8Bytes(""), false)).to.be.reverted;
+
+      // If I pause withdraw, it can't withdraw and setStrategy fails
+      await helpers.impersonateAccount(ADDRESSES.AAVEPoolAdmin);
+      await helpers.setBalance(ADDRESSES.AAVEPoolAdmin, ethers.parseEther("100"));
+      const aaveAdmin = await ethers.getSigner(ADDRESSES.AAVEPoolAdmin);
+
+      const aaveConfig = await ethers.getContractAt(PoolConfiguratorABI, ADDRESSES.AAVEPoolConfigurator);
+
+      await aaveConfig.connect(aaveAdmin).setReservePause(ADDRESSES.USDC, true);
+
+      expect(await vault.maxRedeem(lp)).to.equal(0);
+      expect(await vault.maxWithdraw(lp)).to.equal(0);
+
+      await expect(vault.connect(anon).setStrategy(strategy, ethers.toUtf8Bytes(""), false)).to.be.revertedWith(
+        "29" // RESERVE_PAUSED
+      );
+
+      const DummyInvestStrategy = await ethers.getContractFactory("DummyInvestStrategy");
+      const otherStrategy = await AaveV3InvestStrategy.deploy(ADDRESSES.USDC, ADDRESSES.AAVEv3);
+      const dummyStrategy = await DummyInvestStrategy.deploy(ADDRESSES.USDC);
+
+      // But if I force, it works
+      await expect(vault.connect(anon).setStrategy(otherStrategy, ethers.toUtf8Bytes(""), true))
+        .to.emit(vault, "StrategyChanged")
+        .withArgs(strategy, otherStrategy)
+        .to.emit(vault, "WithdrawFailed");
+
+      expect(await vault.totalAssets()).to.closeTo(_A(3000), CENT);
+
+      // Setting a dummyStrategy returns totalAssets == 0 because can't see the assets in Compound
+      let tx = await vault.connect(anon).setStrategy(dummyStrategy, encodeDummyStorage({}), true);
+      await expect(tx)
+        .to.emit(vault, "StrategyChanged")
+        .withArgs(otherStrategy, dummyStrategy)
+        .to.emit(vault, "WithdrawFailed");
+      let receipt = await tx.wait();
+      let evt = getTransactionEvent(dummyStrategy.interface, receipt, "Deposit");
+      expect(evt).not.equal(null);
+      expect(evt.args.assets).to.be.equal(0);
+
+      expect(await vault.totalAssets()).to.equal(0);
+      expect(await dummyStrategy.getFail(vault)).to.deep.equal([false, false, false, false]);
+
+      // Setting again `strategy` works fine
+      await expect(vault.connect(anon).setStrategy(strategy, ethers.toUtf8Bytes(""), false))
+        .to.emit(vault, "StrategyChanged")
+        .withArgs(dummyStrategy, strategy);
+      expect(await vault.totalAssets()).to.closeTo(_A(3000), CENT);
+
+      // Now I unpause Compound
+      await aaveConfig.connect(aaveAdmin).setReservePause(ADDRESSES.USDC, false);
+
+      // Setting a dummyStrategy sends the assets to the vault
+      tx = await vault.connect(anon).setStrategy(dummyStrategy, encodeDummyStorage({}), false);
+      await expect(tx)
+        .to.emit(vault, "StrategyChanged")
+        .withArgs(strategy, dummyStrategy)
+        .not.to.emit(vault, "WithdrawFailed");
+      receipt = await tx.wait();
+      evt = getTransactionEvent(dummyStrategy.interface, receipt, "Deposit");
+      expect(evt).not.equal(null);
+      expect(evt.args.assets).to.be.closeTo(_A(3000), CENT);
+
+      expect(await vault.totalAssets()).to.closeTo(_A(3000), CENT);
+      expect(await currency.balanceOf(vault)).to.closeTo(_A(3000), CENT);
+    });
+
+    variant.tagit("Checks methods can't be called directly [!CompoundV3ERC4626]", async () => {
+      const { strategy } = await helpers.loadFixture(variant.fixture);
+      await expect(strategy.getFunction("connect")(ethers.toUtf8Bytes(""))).to.be.revertedWithCustomError(
+        strategy,
+        "CanBeCalledOnlyThroughDelegateCall"
+      );
+      await expect(strategy.disconnect(false)).to.be.revertedWithCustomError(
+        strategy,
+        "CanBeCalledOnlyThroughDelegateCall"
+      );
+      await expect(strategy.deposit(123)).to.be.revertedWithCustomError(strategy, "CanBeCalledOnlyThroughDelegateCall");
+      await expect(strategy.withdraw(123)).to.be.revertedWithCustomError(
+        strategy,
+        "CanBeCalledOnlyThroughDelegateCall"
+      );
+      await expect(strategy.forwardEntryPoint(1, ethers.toUtf8Bytes(""))).to.be.revertedWithCustomError(
+        strategy,
+        "CanBeCalledOnlyThroughDelegateCall"
+      );
     });
   });
 });
