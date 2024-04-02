@@ -14,7 +14,7 @@ import {IInvestStrategy} from "./interfaces/IInvestStrategy.sol";
 library InvestStrategyClient {
   using Address for address;
 
-  event StrategyChanged(IInvestStrategy indexed oldStrategy, IInvestStrategy newStrategy);
+  event StrategyChanged(IInvestStrategy oldStrategy, IInvestStrategy newStrategy);
   event WithdrawFailed(bytes reason);
   event DepositFailed(bytes reason);
   event DisconnectFailed(bytes reason);
