@@ -30,8 +30,9 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
   using Address for address;
   using InvestStrategyClient for IInvestStrategy;
 
-  bytes32 public constant STRATEGY_ADMIN_ROLE = keccak256("QUEUE_ADMIN_ROLE");
+  bytes32 public constant STRATEGY_ADMIN_ROLE = keccak256("STRATEGY_ADMIN_ROLE");
   bytes32 public constant QUEUE_ADMIN_ROLE = keccak256("QUEUE_ADMIN_ROLE");
+  bytes32 public constant REBALANCER_ROLE = keccak256("REBALANCER_ROLE");
 
   uint8 public constant MAX_STRATEGIES = 32;
 
@@ -48,6 +49,7 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
   event StrategyRemoved(IInvestStrategy indexed strategy, uint8 index);
   event DepositQueueChanged(uint8[] queue);
   event WithdrawQueueChanged(uint8[] queue);
+  event Rebalance(IInvestStrategy indexed strategyFrom, IInvestStrategy indexed strategyTo, uint256 amount);
 
   error InvalidStrategiesLength();
   error InvalidStrategy();
@@ -61,6 +63,8 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
   error InvalidQueue();
   error InvalidQueueLength();
   error InvalidQueueIndexDuplicated(uint8 index);
+  error RebalanceAmountExceedsMaxDeposit(uint256 max);
+  error RebalanceAmountExceedsMaxWithdraw(uint256 max);
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor() {
@@ -374,6 +378,37 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     }
     if (i < MAX_STRATEGIES && address(_strategies[i]) != address(0)) revert InvalidQueueLength();
     emit WithdrawQueueChanged(newWithdrawQueue_);
+  }
+
+  function rebalance(
+    uint8 strategyFromIdx,
+    uint8 strategyToIdx,
+    uint256 amount
+  ) external onlyRole(REBALANCER_ROLE) returns (uint256) {
+    if (strategyFromIdx >= MAX_STRATEGIES || strategyToIdx >= MAX_STRATEGIES) revert InvalidStrategy();
+    IInvestStrategy strategyFrom = _strategies[strategyFromIdx];
+    IInvestStrategy strategyTo = _strategies[strategyToIdx];
+    if (address(strategyFrom) == address(0) || address(strategyTo) == address(0)) revert InvalidStrategy();
+    if (amount == type(uint256).max) amount = strategyFrom.totalAssets();
+    if (amount == 0) return 0; // Don't revert if nothing to do, just to make life easier for devs
+    if (amount > strategyFrom.maxWithdraw()) revert RebalanceAmountExceedsMaxWithdraw(strategyFrom.maxWithdraw());
+    if (amount > strategyTo.maxDeposit()) revert RebalanceAmountExceedsMaxDeposit(strategyTo.maxDeposit());
+    strategyFrom.dcWithdraw(amount, false);
+    strategyTo.dcDeposit(amount, false);
+    emit Rebalance(strategyFrom, strategyTo, amount);
+    return amount;
+  }
+
+  function getStrategies() external returns (IInvestStrategy[MAX_STRATEGIES] memory) {
+    return _strategies;
+  }
+
+  function getDepositQueue() external returns (uint8[MAX_STRATEGIES] memory) {
+    return _depositQueue;
+  }
+
+  function getWithdrawQueue() external returns (uint8[MAX_STRATEGIES] memory) {
+    return _withdrawQueue;
   }
 
   /**
