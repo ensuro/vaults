@@ -734,7 +734,7 @@ variants.forEach((variant) => {
 
       expect(await vault.totalAssets()).to.closeTo(_A(3000), CENT);
       expect(await cUSDCv3.balanceOf(vault)).to.equal(0);
-      expect(await currency.balanceOf(vault)).to.closeTo(_A(3000), CENT);
+      expect(await currency.balanceOf(await dummyStrategy.other())).to.closeTo(_A(3000), CENT);
     });
 
     variant.tagit("Checks only authorized can setStrategy [AAVEV3Strategy]", async () => {
@@ -822,7 +822,7 @@ variants.forEach((variant) => {
       expect(evt.args.assets).to.be.closeTo(_A(3000), CENT);
 
       expect(await vault.totalAssets()).to.closeTo(_A(3000), CENT);
-      expect(await currency.balanceOf(vault)).to.closeTo(_A(3000), CENT);
+      expect(await currency.balanceOf(await dummyStrategy.other())).to.closeTo(_A(3000), CENT);
     });
 
     variant.tagit("Checks methods can't be called directly [!CompoundV3ERC4626]", async () => {

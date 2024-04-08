@@ -128,7 +128,8 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     uint8[] memory withdrawQueue_
   ) internal onlyInitializing {
     if (
-      (strategies_.length > MAX_STRATEGIES && strategies_.length != initStrategyDatas.length) ||
+      strategies_.length > MAX_STRATEGIES ||
+      strategies_.length != initStrategyDatas.length ||
       strategies_.length != depositQueue_.length ||
       strategies_.length != withdrawQueue_.length
     ) revert InvalidStrategiesLength();
@@ -142,9 +143,9 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
       }
       // Check depositQueue_[i] and withdrawQueue_[i] not duplicated and within bounds
       if (depositQueue_[i] >= strategies_.length || presentInDeposit[depositQueue_[i]])
-        revert InvalidStrategyInDepositQueue(uint8(i));
+        revert InvalidStrategyInDepositQueue(depositQueue_[i]);
       if (withdrawQueue_[i] >= strategies_.length || presentInWithdraw[withdrawQueue_[i]])
-        revert InvalidStrategyInWithdrawQueue(uint8(i));
+        revert InvalidStrategyInWithdrawQueue(withdrawQueue_[i]);
       presentInDeposit[depositQueue_[i]] = true;
       presentInWithdraw[withdrawQueue_[i]] = true;
       _strategies[i] = strategies_[i];
@@ -399,15 +400,15 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     return amount;
   }
 
-  function getStrategies() external returns (IInvestStrategy[MAX_STRATEGIES] memory) {
+  function getStrategies() external view returns (IInvestStrategy[MAX_STRATEGIES] memory) {
     return _strategies;
   }
 
-  function getDepositQueue() external returns (uint8[MAX_STRATEGIES] memory) {
+  function getDepositQueue() external view returns (uint8[MAX_STRATEGIES] memory) {
     return _depositQueue;
   }
 
-  function getWithdrawQueue() external returns (uint8[MAX_STRATEGIES] memory) {
+  function getWithdrawQueue() external view returns (uint8[MAX_STRATEGIES] memory) {
     return _withdrawQueue;
   }
 

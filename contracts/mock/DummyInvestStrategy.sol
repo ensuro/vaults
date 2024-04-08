@@ -8,10 +8,17 @@ import {IInvestStrategy} from "../interfaces/IInvestStrategy.sol";
 import {IExposeStorage} from "../interfaces/IExposeStorage.sol";
 import {InvestStrategyClient} from "../InvestStrategyClient.sol";
 
+contract OtherAddress {
+  constructor(IERC20 asset_) {
+    asset_.approve(msg.sender, type(uint256).max);
+  }
+}
+
 contract DummyInvestStrategy is IInvestStrategy {
   IERC20 internal immutable _asset;
   address private immutable __self = address(this);
   bytes32 public immutable storageSlot = InvestStrategyClient.makeStorageSlot(this);
+  address public immutable other;
 
   error Fail(string where);
   error NoExtraDataAllowed();
@@ -35,6 +42,7 @@ contract DummyInvestStrategy is IInvestStrategy {
 
   constructor(IERC20 asset_) {
     _asset = asset_;
+    other = address(new OtherAddress(asset_));
   }
 
   function connect(bytes memory initData) external override {
@@ -60,7 +68,7 @@ contract DummyInvestStrategy is IInvestStrategy {
 
   function maxWithdraw(address contract_) public view virtual override returns (uint256) {
     if (_getStorageForViews(contract_).failWithdraw) return 0;
-    return _asset.balanceOf(contract_);
+    return _asset.balanceOf(other);
   }
 
   function maxDeposit(address contract_) public view virtual override returns (uint256) {
@@ -68,17 +76,19 @@ contract DummyInvestStrategy is IInvestStrategy {
     return type(uint256).max;
   }
 
-  function totalAssets(address contract_) public view virtual override returns (uint256 assets) {
-    return _asset.balanceOf(contract_);
+  function totalAssets(address) public view virtual override returns (uint256 assets) {
+    return _asset.balanceOf(other);
   }
 
   function withdraw(uint256 assets) external override {
     if (_getStorage().failWithdraw) revert Fail("withdraw");
+    _asset.transferFrom(other, address(this), assets);
     emit Withdraw(assets);
   }
 
   function deposit(uint256 assets) external override {
     if (_getStorage().failDeposit) revert Fail("deposit");
+    _asset.transfer(other, assets);
     emit Deposit(assets);
   }
 
