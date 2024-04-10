@@ -6,7 +6,7 @@ const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
 const { ethers } = hre;
-const { ZeroAddress } = hre.ethers;
+const { ZeroAddress, MaxUint256 } = hre.ethers;
 
 const CURRENCY_DECIMALS = 6;
 const MAX_STRATEGIES = 32;
@@ -197,5 +197,86 @@ describe("MultiStrategyERC4626 contract tests", function () {
       .withArgs([2, 1, 0])
       .to.emit(vault, "WithdrawQueueChanged")
       .withArgs([1, 0, 2]);
+  });
+
+  it("It respects the order of deposit and withdrawal queues", async () => {
+    const { deployVault, lp, lp2, currency, admin, strategies } = await helpers.loadFixture(setUp);
+    const vault = await deployVault(4, undefined, [3, 2, 1, 0], [2, 0, 3, 1]);
+    await currency.connect(lp).approve(vault, MaxUint256);
+
+    await expect(vault.connect(lp).deposit(_A(100), lp)).to.be.revertedWith("ERC4626: deposit more than max");
+
+    await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
+    await expect(vault.connect(lp).deposit(_A(100), lp)).not.to.be.reverted;
+
+    expect(await vault.totalAssets()).to.be.equal(_A(100));
+    // Check money went to strategy[3]
+    expect(await currency.balanceOf(await strategies[3].other())).to.be.equal(_A(100));
+
+    // Then disable deposits on 3
+    await vault.forwardToStrategy(3, 0, encodeDummyStorage({ failDeposit: true }));
+    await vault.forwardToStrategy(2, 0, encodeDummyStorage({ failDeposit: true }));
+
+    await expect(vault.connect(lp).deposit(_A(200), lp)).not.to.be.reverted;
+    expect(await currency.balanceOf(await strategies[1].other())).to.be.equal(_A(200));
+    expect(await vault.totalAssets()).to.be.equal(_A(300));
+
+    await expect(vault.connect(lp).transfer(lp2, _A(150))).not.to.be.reverted;
+    await expect(vault.connect(lp2).redeem(_A(150), lp2, lp2)).not.to.be.reverted;
+    expect(await currency.balanceOf(await strategies[3].other())).to.be.equal(_A(0));
+    expect(await currency.balanceOf(await strategies[1].other())).to.be.equal(_A(150));
+
+    await expect(vault.connect(lp).redeem(_A(150), lp, lp)).not.to.be.reverted;
+    expect(await currency.balanceOf(await strategies[3].other())).to.be.equal(_A(0));
+    expect(await currency.balanceOf(await strategies[1].other())).to.be.equal(_A(0));
+    expect(await vault.totalAssets()).to.be.equal(_A(0));
+  });
+
+  it("It respects the order of deposit and authorized user can rebalance", async () => {
+    const { deployVault, lp, lp2, currency, admin, strategies } = await helpers.loadFixture(setUp);
+    const vault = await deployVault(4, undefined, [3, 2, 1, 0], [2, 0, 3, 1]);
+    await currency.connect(lp).approve(vault, MaxUint256);
+    await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
+    await expect(vault.connect(lp).deposit(_A(100), lp)).not.to.be.reverted;
+
+    expect(await vault.totalAssets()).to.be.equal(_A(100));
+    // Check money went to strategy[3]
+    expect(await currency.balanceOf(await strategies[3].other())).to.be.equal(_A(100));
+
+    await expect(vault.connect(lp2).rebalance(3, 1, _A(50))).to.be.revertedWith(
+      accessControlMessage(lp2, null, "REBALANCER_ROLE")
+    );
+
+    await vault.connect(admin).grantRole(getRole("REBALANCER_ROLE"), lp2);
+
+    await expect(vault.connect(lp2).rebalance(33, 1, _A(50))).to.be.revertedWithCustomError(vault, "InvalidStrategy");
+    await expect(vault.connect(lp2).rebalance(1, 33, _A(50))).to.be.revertedWithCustomError(vault, "InvalidStrategy");
+    await expect(vault.connect(lp2).rebalance(5, 1, _A(50))).to.be.revertedWithCustomError(vault, "InvalidStrategy");
+    await expect(vault.connect(lp2).rebalance(1, 5, _A(50))).to.be.revertedWithCustomError(vault, "InvalidStrategy");
+    await expect(vault.connect(lp2).rebalance(3, 1, _A(200)))
+      .to.be.revertedWithCustomError(vault, "RebalanceAmountExceedsMaxWithdraw")
+      .withArgs(_A(100));
+
+    await vault.forwardToStrategy(2, 0, encodeDummyStorage({ failDeposit: true }));
+    await expect(vault.connect(lp2).rebalance(3, 2, _A(20)))
+      .to.be.revertedWithCustomError(vault, "RebalanceAmountExceedsMaxDeposit")
+      .withArgs(_A(0));
+
+    await expect(vault.connect(lp2).rebalance(3, 1, _A(40)))
+      .to.emit(vault, "Rebalance")
+      .withArgs(strategies[3], strategies[1], _A(40));
+
+    expect(await currency.balanceOf(await strategies[3].other())).to.be.equal(_A(60));
+    expect(await currency.balanceOf(await strategies[1].other())).to.be.equal(_A(40));
+
+    await expect(vault.connect(lp2).rebalance(3, 0, MaxUint256))
+      .to.emit(vault, "Rebalance")
+      .withArgs(strategies[3], strategies[0], _A(60));
+
+    expect(await currency.balanceOf(await strategies[3].other())).to.be.equal(_A(0));
+    expect(await currency.balanceOf(await strategies[0].other())).to.be.equal(_A(60));
+    expect(await currency.balanceOf(await strategies[1].other())).to.be.equal(_A(40));
+
+    await expect(vault.connect(lp2).rebalance(3, 0, MaxUint256)).not.to.emit(vault, "Rebalance");
   });
 });

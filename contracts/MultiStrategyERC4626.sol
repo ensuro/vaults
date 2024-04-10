@@ -181,7 +181,8 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
   /**
    * @dev See {IERC4626-maxDeposit}.
    */
-  function maxDeposit(address) public view virtual override returns (uint256 ret) {
+  function maxDeposit(address owner) public view virtual override returns (uint256 ret) {
+    if (super.maxDeposit(owner) == 0) return 0;
     for (uint8 i; address(_strategies[i]) != address(0) && i < MAX_STRATEGIES; i++) {
       uint256 maxDep = _strategies[i].maxDeposit();
       if (maxDep == type(uint256).max) return maxDep;
@@ -193,6 +194,7 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
    * @dev See {IERC4626-maxMint}.
    */
   function maxMint(address owner) public view virtual override returns (uint256) {
+    if (super.maxMint(owner) == 0) return 0;
     uint256 maxDep = maxDeposit(owner);
     return maxDep == type(uint256).max ? type(uint256).max : _convertToShares(maxDep, MathUpgradeable.Rounding.Down);
   }
@@ -217,6 +219,7 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     for (uint8 i; left != 0 && _withdrawQueue[i] != 0 && i < MAX_STRATEGIES; i++) {
       IInvestStrategy strategy = _strategies[_withdrawQueue[i] - 1];
       uint256 toWithdraw = MathUpgradeable.min(left, strategy.maxWithdraw());
+      if (toWithdraw == 0) continue;
       strategy.dcWithdraw(toWithdraw, false);
       left -= toWithdraw;
     }
@@ -231,6 +234,7 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     for (uint8 i; left != 0 && _depositQueue[i] != 0 && i < MAX_STRATEGIES; i++) {
       IInvestStrategy strategy = _strategies[_depositQueue[i] - 1];
       uint256 toDeposit = MathUpgradeable.min(left, strategy.maxDeposit());
+      if (toDeposit == 0) continue;
       strategy.dcDeposit(toDeposit, false);
       left -= toDeposit;
     }

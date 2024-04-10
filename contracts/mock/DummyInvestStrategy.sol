@@ -9,8 +9,8 @@ import {IExposeStorage} from "../interfaces/IExposeStorage.sol";
 import {InvestStrategyClient} from "../InvestStrategyClient.sol";
 
 contract OtherAddress {
-  constructor(IERC20 asset_) {
-    asset_.approve(msg.sender, type(uint256).max);
+  function transferTo(IERC20 asset_, address to, uint256 amount) external {
+    asset_.transfer(to, amount);
   }
 }
 
@@ -42,7 +42,7 @@ contract DummyInvestStrategy is IInvestStrategy {
 
   constructor(IERC20 asset_) {
     _asset = asset_;
-    other = address(new OtherAddress(asset_));
+    other = address(new OtherAddress());
   }
 
   function connect(bytes memory initData) external override {
@@ -82,7 +82,7 @@ contract DummyInvestStrategy is IInvestStrategy {
 
   function withdraw(uint256 assets) external override {
     if (_getStorage().failWithdraw) revert Fail("withdraw");
-    _asset.transferFrom(other, address(this), assets);
+    OtherAddress(other).transferTo(_asset, address(this), assets);
     emit Withdraw(assets);
   }
 
