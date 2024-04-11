@@ -259,6 +259,11 @@ describe("MultiStrategyERC4626 contract tests", function () {
     expect(await vault.maxWithdraw(lp)).to.equal(_A(0));
     expect(await vault.maxRedeem(lp)).to.equal(_A(0));
 
+    await vault.forwardToStrategy(0, 0, encodeDummyStorage({ failDeposit: true }));
+    expect(await vault.maxDeposit(lp)).to.equal(MaxUint256);
+    expect(await vault.maxMint(lp)).to.equal(MaxUint256);
+    await vault.forwardToStrategy(0, 0, encodeDummyStorage({}));
+
     await expect(vault.connect(lp).deposit(_A(200), lp)).not.to.be.reverted;
     expect(await currency.balanceOf(await strategies[1].other())).to.be.equal(_A(200));
     expect(await vault.totalAssets()).to.be.equal(_A(300));
