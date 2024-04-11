@@ -413,6 +413,10 @@ describe("MultiStrategyERC4626 contract tests", function () {
       .withArgs(strategies[0], 0);
     await invariantChecks(vault);
 
+    // Indexes changed but kept in the same order
+    expect(await vault.depositQueue()).to.deep.equal([1, 2].concat(Array(MAX_STRATEGIES - 2).fill(0)));
+    expect(await vault.withdrawQueue()).to.deep.equal([2, 1].concat(Array(MAX_STRATEGIES - 2).fill(0)));
+
     await expect(vault.forwardToStrategy(1, 0, encodeDummyStorage({ failDisconnect: true }))).not.to.be.reverted;
 
     await expect(vault.connect(lp2).removeStrategy(1, false)).to.be.revertedWithCustomError(strategies[2], "Fail");
@@ -422,11 +426,89 @@ describe("MultiStrategyERC4626 contract tests", function () {
       .withArgs(strategies[2], 1);
     await invariantChecks(vault);
 
+    expect(await vault.depositQueue()).to.deep.equal([1].concat(Array(MAX_STRATEGIES - 1).fill(0)));
+    expect(await vault.withdrawQueue()).to.deep.equal([1].concat(Array(MAX_STRATEGIES - 1).fill(0)));
+
     await expect(vault.connect(lp).redeem(_A(100), lp, lp)).not.to.be.reverted;
 
     await expect(vault.connect(lp2).removeStrategy(0, false)).to.be.revertedWithCustomError(
       vault,
       "InvalidStrategiesLength"
+    );
+  });
+
+  it("It can change the depositQueue if authorized", async () => {
+    const { deployVault, lp2, admin } = await helpers.loadFixture(setUp);
+    const vault = await deployVault(3, undefined, [1, 0, 2], [2, 0, 1]);
+    expect(await vault.depositQueue()).to.deep.equal([2, 1, 3].concat(Array(MAX_STRATEGIES - 3).fill(0)));
+
+    await expect(vault.connect(lp2).changeDepositQueue([0, 1, 2])).to.be.revertedWith(
+      accessControlMessage(lp2, null, "QUEUE_ADMIN_ROLE")
+    );
+    await vault.connect(admin).grantRole(getRole("QUEUE_ADMIN_ROLE"), lp2);
+
+    await expect(vault.connect(lp2).changeDepositQueue([1, 1, 2]))
+      .to.be.revertedWithCustomError(vault, "InvalidQueueIndexDuplicated")
+      .withArgs(1);
+    await expect(vault.connect(lp2).changeDepositQueue([0, 1, 3])).to.be.revertedWithCustomError(vault, "InvalidQueue");
+    await expect(vault.connect(lp2).changeDepositQueue([0, 32, 2])).to.be.revertedWithCustomError(
+      vault,
+      "InvalidQueue"
+    );
+    await expect(vault.connect(lp2).changeDepositQueue([0, 1])).to.be.revertedWithCustomError(
+      vault,
+      "InvalidQueueLength"
+    );
+
+    await expect(vault.connect(lp2).changeDepositQueue([2, 1, 0]))
+      .to.emit(vault, "DepositQueueChanged")
+      .withArgs([2, 1, 0]);
+    await invariantChecks(vault);
+
+    const vault32 = await deployVault(32);
+    await vault32.connect(admin).grantRole(getRole("QUEUE_ADMIN_ROLE"), lp2);
+    await expect(vault.connect(lp2).changeDepositQueue([...Array(33).keys()])).to.be.revertedWithCustomError(
+      vault,
+      "InvalidQueue"
+    );
+  });
+
+  it("It can change the withdrawQueue if authorized", async () => {
+    const { deployVault, lp2, admin } = await helpers.loadFixture(setUp);
+    const vault = await deployVault(3, undefined, [1, 0, 2], [2, 0, 1]);
+    expect(await vault.withdrawQueue()).to.deep.equal([3, 1, 2].concat(Array(MAX_STRATEGIES - 3).fill(0)));
+
+    await expect(vault.connect(lp2).changeWithdrawQueue([0, 1, 2])).to.be.revertedWith(
+      accessControlMessage(lp2, null, "QUEUE_ADMIN_ROLE")
+    );
+    await vault.connect(admin).grantRole(getRole("QUEUE_ADMIN_ROLE"), lp2);
+
+    await expect(vault.connect(lp2).changeWithdrawQueue([1, 1, 2]))
+      .to.be.revertedWithCustomError(vault, "InvalidQueueIndexDuplicated")
+      .withArgs(1);
+    await expect(vault.connect(lp2).changeWithdrawQueue([0, 1, 3])).to.be.revertedWithCustomError(
+      vault,
+      "InvalidQueue"
+    );
+    await expect(vault.connect(lp2).changeWithdrawQueue([0, 32, 2])).to.be.revertedWithCustomError(
+      vault,
+      "InvalidQueue"
+    );
+    await expect(vault.connect(lp2).changeWithdrawQueue([0, 1])).to.be.revertedWithCustomError(
+      vault,
+      "InvalidQueueLength"
+    );
+
+    await expect(vault.connect(lp2).changeWithdrawQueue([2, 1, 0]))
+      .to.emit(vault, "WithdrawQueueChanged")
+      .withArgs([2, 1, 0]);
+    await invariantChecks(vault);
+
+    const vault32 = await deployVault(32);
+    await vault32.connect(admin).grantRole(getRole("QUEUE_ADMIN_ROLE"), lp2);
+    await expect(vault.connect(lp2).changeWithdrawQueue([...Array(33).keys()])).to.be.revertedWithCustomError(
+      vault,
+      "InvalidQueue"
     );
   });
 });

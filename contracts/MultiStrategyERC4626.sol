@@ -381,7 +381,7 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     bool[MAX_STRATEGIES] memory seen;
     uint8 i = 0;
     for (; i < newDepositQueue_.length; i++) {
-      if (i >= MAX_STRATEGIES || address(_strategies[newDepositQueue_[i]]) == address(0)) revert InvalidQueue();
+      if (i >= MAX_STRATEGIES || newDepositQueue_[i] >= MAX_STRATEGIES || address(_strategies[newDepositQueue_[i]]) == address(0)) revert InvalidQueue();
       if (seen[newDepositQueue_[i]]) revert InvalidQueueIndexDuplicated(newDepositQueue_[i]);
       seen[newDepositQueue_[i]] = true;
       _depositQueue[i] = newDepositQueue_[i] + 1;
@@ -394,7 +394,7 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     bool[MAX_STRATEGIES] memory seen;
     uint8 i = 0;
     for (; i < newWithdrawQueue_.length; i++) {
-      if (i >= MAX_STRATEGIES || address(_strategies[newWithdrawQueue_[i]]) == address(0)) revert InvalidQueue();
+      if (i >= MAX_STRATEGIES || newWithdrawQueue_[i] >= MAX_STRATEGIES || address(_strategies[newWithdrawQueue_[i]]) == address(0)) revert InvalidQueue();
       if (seen[newWithdrawQueue_[i]]) revert InvalidQueueIndexDuplicated(newWithdrawQueue_[i]);
       seen[newWithdrawQueue_[i]] = true;
       _withdrawQueue[i] = newWithdrawQueue_[i] + 1;
