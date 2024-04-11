@@ -250,9 +250,20 @@ describe("MultiStrategyERC4626 contract tests", function () {
     await vault.forwardToStrategy(3, 0, encodeDummyStorage({ failDeposit: true }));
     await vault.forwardToStrategy(2, 0, encodeDummyStorage({ failDeposit: true }));
 
+    expect(await vault.maxWithdraw(lp)).to.equal(_A(100));
+    expect(await vault.maxRedeem(lp)).to.equal(_A(100));
+    expect(await vault.maxWithdraw(lp2)).to.equal(_A(0));
+    expect(await vault.maxRedeem(lp2)).to.equal(_A(0));
+
+    await vault.forwardToStrategy(3, 0, encodeDummyStorage({ failDeposit: true, failWithdraw: true }));
+    expect(await vault.maxWithdraw(lp)).to.equal(_A(0));
+    expect(await vault.maxRedeem(lp)).to.equal(_A(0));
+
     await expect(vault.connect(lp).deposit(_A(200), lp)).not.to.be.reverted;
     expect(await currency.balanceOf(await strategies[1].other())).to.be.equal(_A(200));
     expect(await vault.totalAssets()).to.be.equal(_A(300));
+
+    await vault.forwardToStrategy(3, 0, encodeDummyStorage({ failDeposit: true }));
 
     await expect(vault.connect(lp).transfer(lp2, _A(150))).not.to.be.reverted;
     await expect(vault.connect(lp2).redeem(_A(150), lp2, lp2)).not.to.be.reverted;
@@ -510,5 +521,78 @@ describe("MultiStrategyERC4626 contract tests", function () {
       vault,
       "InvalidQueue"
     );
+  });
+
+  it("It can replaceStrategy if authorized", async () => {
+    const { deployVault, lp, lp2, currency, admin, strategies } = await helpers.loadFixture(setUp);
+    const vault = await deployVault(3, undefined, [1, 0, 2], [2, 0, 1]);
+
+    await expect(
+      vault.connect(lp2).replaceStrategy(0, strategies[5], encodeDummyStorage({}), false)
+    ).to.be.revertedWith(accessControlMessage(lp2, null, "STRATEGY_ADMIN_ROLE"));
+
+    await vault.connect(admin).grantRole(getRole("STRATEGY_ADMIN_ROLE"), lp2);
+
+    await expect(vault.connect(lp2).replaceStrategy(33, strategies[5], encodeDummyStorage({}), false)).to.be.reverted;
+
+    await expect(
+      vault.connect(lp2).replaceStrategy(4, strategies[5], encodeDummyStorage({}), false)
+    ).to.be.revertedWithCustomError(vault, "InvalidStrategy");
+
+    // Deposit some funds to make it more interesting
+    await currency.connect(lp).approve(vault, MaxUint256);
+    await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
+    await expect(vault.connect(lp).deposit(_A(100), lp)).not.to.be.reverted;
+    expect(await vault.totalAssets()).to.equal(_A(100));
+    await invariantChecks(vault);
+
+    await vault.forwardToStrategy(1, 0, encodeDummyStorage({ failWithdraw: true }));
+    await expect(
+      vault.connect(lp2).replaceStrategy(1, strategies[5], encodeDummyStorage({}), false)
+    ).to.be.revertedWithCustomError(strategies[1], "Fail");
+
+    await expect(vault.connect(lp2).replaceStrategy(1, strategies[5], encodeDummyStorage({}), true))
+      .to.emit(vault, "StrategyChanged")
+      .withArgs(strategies[1], strategies[5])
+      .to.emit(vault, "WithdrawFailed");
+    expect(await vault.totalAssets()).to.equal(_A(0)); // Funds lost in the disconnected strategy
+
+    await expect(vault.connect(lp2).replaceStrategy(1, strategies[1], encodeDummyStorage({}), true))
+      .to.emit(vault, "StrategyChanged")
+      .withArgs(strategies[5], strategies[1]);
+    expect(await vault.totalAssets()).to.equal(_A(100)); // Funds recovered
+
+    await invariantChecks(vault);
+
+    await expect(
+      vault.connect(lp2).replaceStrategy(1, strategies[5], encodeDummyStorage({ failConnect: true }), true)
+    ).to.revertedWithCustomError(strategies[5], "Fail");
+
+    await expect(
+      vault.connect(lp2).replaceStrategy(1, strategies[5], encodeDummyStorage({ failDeposit: true }), false)
+    ).to.revertedWithCustomError(strategies[5], "Fail");
+
+    await expect(vault.connect(lp2).replaceStrategy(1, strategies[5], encodeDummyStorage({ failDeposit: true }), true))
+      .to.emit(vault, "StrategyChanged")
+      .withArgs(strategies[1], strategies[5])
+      .to.emit(vault, "DepositFailed");
+
+    expect(await vault.totalAssets()).to.equal(_A(0)); // Funds were not deposited to the strategy
+
+    await expect(vault.connect(lp2).replaceStrategy(1, strategies[6], encodeDummyStorage({}), false))
+      .to.emit(vault, "StrategyChanged")
+      .withArgs(strategies[5], strategies[6]);
+
+    expect(await vault.totalAssets()).to.equal(_A(100)); // replaceStrategy recovers the funds in the contract
+
+    // Can't replace with an strategy that's present already
+    await expect(vault.connect(lp2).replaceStrategy(1, strategies[0], encodeDummyStorage({}), false))
+      .to.be.revertedWithCustomError(vault, "DuplicatedStrategy")
+      .withArgs(strategies[0]);
+
+    // But can replace with the same strategy (might be necessary in some case)
+    await expect(vault.connect(lp2).replaceStrategy(1, strategies[6], encodeDummyStorage({}), false))
+      .to.emit(vault, "StrategyChanged")
+      .withArgs(strategies[6], strategies[6]);
   });
 });
