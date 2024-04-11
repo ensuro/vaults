@@ -81,15 +81,40 @@ async function setUp() {
   };
 }
 
+async function invariantChecks(vault) {
+  const strategies = await vault.strategies();
+  const withdrawQ = await vault.withdrawQueue();
+  const depositQ = await vault.depositQueue();
+  const stratCount = strategies.filter((x) => x !== ZeroAddress).length;
+  expect(strategies).to.deep.equal(
+    strategies.slice(0, stratCount).concat(Array(MAX_STRATEGIES - stratCount).fill(ZeroAddress)),
+    "All the ZeroAddress must be at the end"
+  );
+  expect(withdrawQ).to.deep.equal(
+    withdrawQ.slice(0, stratCount).concat(Array(MAX_STRATEGIES - stratCount).fill(0)),
+    "All the 0 must be at the end"
+  );
+  expect(depositQ).to.deep.equal(
+    depositQ.slice(0, stratCount).concat(Array(MAX_STRATEGIES - stratCount).fill(0)),
+    "All the 0 must be at the end"
+  );
+  // Check there are no duplicates in depositQ and withdrawQ
+  expect(new Set(depositQ.slice(0, stratCount)).size).to.equal(stratCount, "Error in depositQueue");
+  expect(new Set(withdrawQ.slice(0, stratCount)).size).to.equal(stratCount, "Error in withdrawQueue");
+  // Check the values are between 1 and stratCount + 1
+  expect(withdrawQ.slice(0, stratCount).some((x) => x < 1 || x > stratCount)).to.equal(false);
+  expect(depositQ.slice(0, stratCount).some((x) => x < 1 || x > stratCount)).to.equal(false);
+}
+
 describe("MultiStrategyERC4626 contract tests", function () {
   it("Initializes the vault correctly", async () => {
     const { deployVault, currency, strategies } = await helpers.loadFixture(setUp);
     const vault = await deployVault(1);
     expect(await vault.name()).to.equal(NAME);
     expect(await vault.symbol()).to.equal(SYMB);
-    expect(await vault.getWithdrawQueue()).to.deep.equal([1].concat(Array(MAX_STRATEGIES - 1).fill(0)));
-    expect(await vault.getDepositQueue()).to.deep.equal([1].concat(Array(MAX_STRATEGIES - 1).fill(0)));
-    expect(await vault.getStrategies()).to.deep.equal(
+    expect(await vault.withdrawQueue()).to.deep.equal([1].concat(Array(MAX_STRATEGIES - 1).fill(0)));
+    expect(await vault.depositQueue()).to.deep.equal([1].concat(Array(MAX_STRATEGIES - 1).fill(0)));
+    expect(await vault.strategies()).to.deep.equal(
       [await ethers.resolveAddress(strategies[0])].concat(Array(MAX_STRATEGIES - 1).fill(ZeroAddress))
     );
     expect(await vault.asset()).to.equal(currency);
@@ -115,6 +140,10 @@ describe("MultiStrategyERC4626 contract tests", function () {
   it("It sets and reads the right value from strategy storage", async () => {
     const { deployVault, strategies } = await helpers.loadFixture(setUp);
     const vault = await deployVault(3);
+    await expect(vault.forwardToStrategy(4, 0, encodeDummyStorage({}))).to.be.revertedWithCustomError(
+      vault,
+      "InvalidStrategy"
+    );
     for (let i = 0; i < 3; i++) {
       let strategy = strategies[i];
       let failConfig = {};
@@ -145,6 +174,8 @@ describe("MultiStrategyERC4626 contract tests", function () {
 
   it("It fails when initialized with wrong parameters", async () => {
     const { deployVault, strategies, MultiStrategyERC4626 } = await helpers.loadFixture(setUp);
+    // Sending 0 strategies fails
+    await expect(deployVault(0)).to.be.revertedWithCustomError(MultiStrategyERC4626, "InvalidStrategiesLength");
     // Sending 33 strategies fail
     await expect(deployVault(strategies.concat([strategies[0]]))).to.be.revertedWithCustomError(
       MultiStrategyERC4626,
@@ -197,6 +228,7 @@ describe("MultiStrategyERC4626 contract tests", function () {
       .withArgs([2, 1, 0])
       .to.emit(vault, "WithdrawQueueChanged")
       .withArgs([1, 0, 2]);
+    await invariantChecks(vault);
   });
 
   it("It respects the order of deposit and withdrawal queues", async () => {
@@ -205,6 +237,7 @@ describe("MultiStrategyERC4626 contract tests", function () {
     await currency.connect(lp).approve(vault, MaxUint256);
 
     await expect(vault.connect(lp).deposit(_A(100), lp)).to.be.revertedWith("ERC4626: deposit more than max");
+    await expect(vault.connect(lp).mint(_A(100), lp)).to.be.revertedWith("ERC4626: mint more than max");
 
     await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
     await expect(vault.connect(lp).deposit(_A(100), lp)).not.to.be.reverted;
@@ -278,5 +311,122 @@ describe("MultiStrategyERC4626 contract tests", function () {
     expect(await currency.balanceOf(await strategies[1].other())).to.be.equal(_A(40));
 
     await expect(vault.connect(lp2).rebalance(3, 0, MaxUint256)).not.to.emit(vault, "Rebalance");
+  });
+
+  it("It can addStrategy and is added at the bottom of the queues", async () => {
+    const { deployVault, lp, lp2, currency, admin, strategies } = await helpers.loadFixture(setUp);
+    const vault = await deployVault(3, undefined, [1, 0, 2], [2, 0, 1]);
+    await currency.connect(lp).approve(vault, MaxUint256);
+    await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
+    await expect(vault.connect(lp).deposit(_A(100), lp)).not.to.be.reverted;
+    await invariantChecks(vault);
+
+    expect(await vault.totalAssets()).to.be.equal(_A(100));
+    // Check money went to strategy[3]
+    expect(await currency.balanceOf(await strategies[1].other())).to.be.equal(_A(100));
+
+    expect(await vault.depositQueue()).to.deep.equal([2, 1, 3].concat(Array(MAX_STRATEGIES - 3).fill(0)));
+    expect(await vault.withdrawQueue()).to.deep.equal([3, 1, 2].concat(Array(MAX_STRATEGIES - 3).fill(0)));
+
+    await expect(vault.connect(lp2).addStrategy(strategies[5], encodeDummyStorage({}))).to.be.revertedWith(
+      accessControlMessage(lp2, null, "STRATEGY_ADMIN_ROLE")
+    );
+
+    await vault.connect(admin).grantRole(getRole("STRATEGY_ADMIN_ROLE"), lp2);
+
+    await expect(vault.connect(lp2).addStrategy(ZeroAddress, encodeDummyStorage({}))).to.be.revertedWith(
+      "Address: call to non-contract"
+    );
+
+    await expect(vault.connect(lp2).addStrategy(strategies[1], encodeDummyStorage({}))).to.be.revertedWithCustomError(
+      vault,
+      "DuplicatedStrategy"
+    );
+
+    await expect(
+      vault.connect(lp2).addStrategy(strategies[5], encodeDummyStorage({ failConnect: true }))
+    ).to.be.revertedWithCustomError(strategies[5], "Fail");
+
+    await expect(vault.connect(lp2).addStrategy(strategies[5], encodeDummyStorage({})))
+      .to.emit(vault, "StrategyAdded")
+      .withArgs(strategies[5], 3);
+    expect(await vault.depositQueue()).to.deep.equal([2, 1, 3, 4].concat(Array(MAX_STRATEGIES - 4).fill(0)));
+    expect(await vault.withdrawQueue()).to.deep.equal([3, 1, 2, 4].concat(Array(MAX_STRATEGIES - 4).fill(0)));
+    await invariantChecks(vault);
+  });
+
+  it("It can add up to 32 strategies", async () => {
+    const { deployVault, lp2, DummyInvestStrategy, currency, admin, strategies } = await helpers.loadFixture(setUp);
+    const vault = await deployVault(30);
+    await invariantChecks(vault);
+    await vault.connect(admin).grantRole(getRole("STRATEGY_ADMIN_ROLE"), lp2);
+
+    // Add 31 works fine
+    await expect(vault.connect(lp2).addStrategy(strategies[30], encodeDummyStorage({})))
+      .to.emit(vault, "StrategyAdded")
+      .withArgs(strategies[30], 30);
+    await invariantChecks(vault);
+
+    // Add 32 works fine
+    await expect(vault.connect(lp2).addStrategy(strategies[31], encodeDummyStorage({})))
+      .to.emit(vault, "StrategyAdded")
+      .withArgs(strategies[31], 31);
+    await invariantChecks(vault);
+
+    const strategy33 = await DummyInvestStrategy.deploy(currency);
+
+    // Another one fails
+    await expect(vault.connect(lp2).addStrategy(strategy33, encodeDummyStorage({}))).to.be.revertedWithCustomError(
+      vault,
+      "InvalidStrategiesLength"
+    );
+    await invariantChecks(vault);
+  });
+
+  it("It can removeStrategy only if doesn't have funds", async () => {
+    const { deployVault, lp, lp2, currency, admin, strategies } = await helpers.loadFixture(setUp);
+    const vault = await deployVault(3, undefined, [1, 0, 2], [2, 0, 1]);
+    await currency.connect(lp).approve(vault, MaxUint256);
+    await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
+    await expect(vault.connect(lp).mint(_A(100), lp)).not.to.be.reverted;
+    await invariantChecks(vault);
+
+    expect(await vault.totalAssets()).to.be.equal(_A(100));
+    // Check money went to strategy[3]
+    expect(await currency.balanceOf(await strategies[1].other())).to.be.equal(_A(100));
+
+    await expect(vault.connect(lp2).removeStrategy(0, false)).to.be.revertedWith(
+      accessControlMessage(lp2, null, "STRATEGY_ADMIN_ROLE")
+    );
+
+    await vault.connect(admin).grantRole(getRole("STRATEGY_ADMIN_ROLE"), lp2);
+
+    await expect(vault.connect(lp2).removeStrategy(33, false)).to.be.revertedWithCustomError(vault, "InvalidStrategy");
+    await expect(vault.connect(lp2).removeStrategy(5, false)).to.be.revertedWithCustomError(vault, "InvalidStrategy");
+    await expect(vault.connect(lp2).removeStrategy(1, false)).to.be.revertedWithCustomError(
+      vault,
+      "CannotRemoveStrategyWithAssets"
+    );
+
+    await expect(vault.connect(lp2).removeStrategy(0, false))
+      .to.emit(vault, "StrategyRemoved")
+      .withArgs(strategies[0], 0);
+    await invariantChecks(vault);
+
+    await expect(vault.forwardToStrategy(1, 0, encodeDummyStorage({ failDisconnect: true }))).not.to.be.reverted;
+
+    await expect(vault.connect(lp2).removeStrategy(1, false)).to.be.revertedWithCustomError(strategies[2], "Fail");
+    await invariantChecks(vault);
+    await expect(vault.connect(lp2).removeStrategy(1, true))
+      .to.emit(vault, "StrategyRemoved")
+      .withArgs(strategies[2], 1);
+    await invariantChecks(vault);
+
+    await expect(vault.connect(lp).redeem(_A(100), lp, lp)).not.to.be.reverted;
+
+    await expect(vault.connect(lp2).removeStrategy(0, false)).to.be.revertedWithCustomError(
+      vault,
+      "InvalidStrategiesLength"
+    );
   });
 });

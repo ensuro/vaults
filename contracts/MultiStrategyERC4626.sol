@@ -128,6 +128,7 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     uint8[] memory withdrawQueue_
   ) internal onlyInitializing {
     if (
+      strategies_.length == 0 ||
       strategies_.length > MAX_STRATEGIES ||
       strategies_.length != initStrategyDatas.length ||
       strategies_.length != depositQueue_.length ||
@@ -309,7 +310,7 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     bytes memory initStrategyData
   ) external onlyRole(STRATEGY_ADMIN_ROLE) {
     uint8 i;
-    for (; _strategies[i] != IInvestStrategy(address(0)) && i < MAX_STRATEGIES; i++) {
+    for (; i < MAX_STRATEGIES && _strategies[i] != IInvestStrategy(address(0)); i++) {
       if (_strategies[i] == newStrategy) revert DuplicatedStrategy(newStrategy);
     }
     if (i == MAX_STRATEGIES) revert InvalidStrategiesLength();
@@ -327,34 +328,51 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
    * @param force If strategy.disconnect fails, this parameter indicates whether the operation is reverted or not.
    */
   function removeStrategy(uint8 strategyIndex, bool force) external onlyRole(STRATEGY_ADMIN_ROLE) {
+    if (strategyIndex >= MAX_STRATEGIES) revert InvalidStrategy();
     IInvestStrategy strategy = _strategies[strategyIndex];
     if (address(strategy) == address(0)) revert InvalidStrategy();
     if (strategy.totalAssets() != 0) revert CannotRemoveStrategyWithAssets();
+    // Check isn't removing the last one
+    if (strategyIndex == 0 && address(_strategies[1]) == address(0)) revert InvalidStrategiesLength();
     // Shift the following strategies in the array
     uint8 i = strategyIndex + 1;
-    for (; _strategies[i] != IInvestStrategy(address(0)) && i < MAX_STRATEGIES; i++) {
+    for (; i < MAX_STRATEGIES && _strategies[i] != IInvestStrategy(address(0)); i++) {
       _strategies[i - 1] = _strategies[i];
     }
-    _strategies[i] = IInvestStrategy(address(0));
+    _strategies[i - 1] = IInvestStrategy(address(0));
     // Shift and change the indexes in the queues
     bool shiftDeposit;
     bool shiftWithdraw;
     for (i = 0; _withdrawQueue[i] != 0 && i < MAX_STRATEGIES; i++) {
-      if (_withdrawQueue[i] == (strategyIndex + 1)) {
-        shiftWithdraw = true;
-      } else if (shiftWithdraw) {
+      if (shiftWithdraw) {
+        // Already saw the deleted index, shift and change index if greater
         _withdrawQueue[i - 1] = _withdrawQueue[i] - ((_withdrawQueue[i] > (strategyIndex + 1)) ? 1 : 0);
-      } else if (_withdrawQueue[i] > (strategyIndex + 1)) {
-        _withdrawQueue[i] = _withdrawQueue[i] - 1;
+      } else {
+        if (_withdrawQueue[i] == (strategyIndex + 1)) {
+          // Index to delete found, it will be deleted in the next interation
+          shiftWithdraw = true;
+        } else if (_withdrawQueue[i] > (strategyIndex + 1)) {
+          // If index is greater, substract one
+          _withdrawQueue[i] -= 1;
+        }
       }
-      if (_depositQueue[i] == (strategyIndex + 1)) {
-        shiftDeposit = true;
-      } else if (shiftDeposit) {
+
+      // Same for deposit
+      if (shiftDeposit) {
+        // Already saw the deleted index, shift and change index if greater
         _depositQueue[i - 1] = _depositQueue[i] - ((_depositQueue[i] > (strategyIndex + 1)) ? 1 : 0);
-      } else if (_depositQueue[i] > (strategyIndex + 1)) {
-        _depositQueue[i] = _depositQueue[i] - 1;
+      } else {
+        if (_depositQueue[i] == (strategyIndex + 1)) {
+          // Index to delete found, it will be deleted in the next interation
+          shiftDeposit = true;
+        } else if (_depositQueue[i] > (strategyIndex + 1)) {
+          // If index is greater, substract one
+          _depositQueue[i] -= 1;
+        }
       }
     }
+    _depositQueue[i - 1] = 0;
+    _withdrawQueue[i - 1] = 0;
     strategy.dcDisconnect(force);
     emit StrategyRemoved(strategy, strategyIndex);
   }
@@ -385,6 +403,12 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     emit WithdrawQueueChanged(newWithdrawQueue_);
   }
 
+  /**
+   * @dev Moves funds from one strategy to the other.
+   * @param strategyFromIdx The index of the strategy that will provide the funds in the _strategies array
+   * @param strategyToIdx The index of the strategy that will receive the funds in the _strategies array
+   * @param amount The amount to transfer from one strategy to the other. type(uint256).max to move all the assets.
+   */
   function rebalance(
     uint8 strategyFromIdx,
     uint8 strategyToIdx,
@@ -404,15 +428,23 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     return amount;
   }
 
-  function getStrategies() external view returns (IInvestStrategy[MAX_STRATEGIES] memory) {
+  function strategies() external view returns (IInvestStrategy[MAX_STRATEGIES] memory) {
     return _strategies;
   }
 
-  function getDepositQueue() external view returns (uint8[MAX_STRATEGIES] memory) {
+  /**
+   * @dev Returns the order in which the deposits will be made, expressed as index+1 in the _strategies array,
+   *      filled with zeros at the end
+   */
+  function depositQueue() external view returns (uint8[MAX_STRATEGIES] memory) {
     return _depositQueue;
   }
 
-  function getWithdrawQueue() external view returns (uint8[MAX_STRATEGIES] memory) {
+  /**
+   * @dev Returns the order in which the withdraws will be made, expressed as index+1 in the _strategies array,
+   *      filled with zeros at the end
+   */
+  function withdrawQueue() external view returns (uint8[MAX_STRATEGIES] memory) {
     return _withdrawQueue;
   }
 
