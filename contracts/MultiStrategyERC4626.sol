@@ -136,10 +136,10 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     ) revert InvalidStrategiesLength();
     bool[MAX_STRATEGIES] memory presentInDeposit;
     bool[MAX_STRATEGIES] memory presentInWithdraw;
-    for (uint8 i; i < strategies_.length; i++) {
+    for (uint256 i; i < strategies_.length; i++) {
       if (address(strategies_[i]) == address(0)) revert InvalidStrategy();
       // Check strategies_[i] not duplicated
-      for (uint8 j; j < i; j++) {
+      for (uint256 j; j < i; j++) {
         if (strategies_[i] == strategies_[j]) revert DuplicatedStrategy(strategies_[i]);
       }
       // Check depositQueue_[i] and withdrawQueue_[i] not duplicated and within bounds
@@ -153,7 +153,7 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
       _depositQueue[i] = depositQueue_[i] + 1; // Adding one, so we know when 0 is end of array
       _withdrawQueue[i] = withdrawQueue_[i] + 1; // Adding one, so we know when 0 is end of array
       strategies_[i].dcConnect(initStrategyDatas[i]);
-      emit StrategyAdded(strategies_[i], i);
+      emit StrategyAdded(strategies_[i], uint8(i));
     }
     emit DepositQueueChanged(depositQueue_);
     emit WithdrawQueueChanged(withdrawQueue_);
@@ -164,7 +164,7 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
    */
   function maxWithdraw(address owner) public view virtual override returns (uint256 ret) {
     uint256 ownerAssets = super.maxWithdraw(owner);
-    for (uint8 i; address(_strategies[i]) != address(0) && i < MAX_STRATEGIES; i++) {
+    for (uint256 i; address(_strategies[i]) != address(0) && i < MAX_STRATEGIES; i++) {
       ret += _strategies[i].maxWithdraw();
       if (ret >= ownerAssets) return ownerAssets;
     }
@@ -184,7 +184,7 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
    */
   function maxDeposit(address owner) public view virtual override returns (uint256 ret) {
     if (super.maxDeposit(owner) == 0) return 0;
-    for (uint8 i; address(_strategies[i]) != address(0) && i < MAX_STRATEGIES; i++) {
+    for (uint256 i; address(_strategies[i]) != address(0) && i < MAX_STRATEGIES; i++) {
       uint256 maxDep = _strategies[i].maxDeposit();
       if (maxDep == type(uint256).max) return maxDep;
       ret += maxDep;
@@ -204,7 +204,7 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
    * @dev See {IERC4626-totalAssets}.
    */
   function totalAssets() public view virtual override returns (uint256 assets) {
-    for (uint8 i; address(_strategies[i]) != address(0) && i < MAX_STRATEGIES; i++) {
+    for (uint256 i; address(_strategies[i]) != address(0) && i < MAX_STRATEGIES; i++) {
       assets += _strategies[i].totalAssets();
     }
   }
@@ -217,7 +217,7 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     uint256 shares
   ) internal virtual override {
     uint256 left = assets;
-    for (uint8 i; left != 0 && _withdrawQueue[i] != 0 && i < MAX_STRATEGIES; i++) {
+    for (uint256 i; left != 0 && _withdrawQueue[i] != 0 && i < MAX_STRATEGIES; i++) {
       IInvestStrategy strategy = _strategies[_withdrawQueue[i] - 1];
       uint256 toWithdraw = MathUpgradeable.min(left, strategy.maxWithdraw());
       if (toWithdraw == 0) continue;
@@ -232,7 +232,7 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     // Transfers the assets from the caller and supplies to compound
     super._deposit(caller, receiver, assets, shares);
     uint256 left = assets;
-    for (uint8 i; left != 0 && _depositQueue[i] != 0 && i < MAX_STRATEGIES; i++) {
+    for (uint256 i; left != 0 && _depositQueue[i] != 0 && i < MAX_STRATEGIES; i++) {
       IInvestStrategy strategy = _strategies[_depositQueue[i] - 1];
       uint256 toDeposit = MathUpgradeable.min(left, strategy.maxDeposit());
       if (toDeposit == 0) continue;
@@ -247,7 +247,7 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
    *      Only the slot==strategyStorageSlot() can be accessed.
    */
   function getBytesSlot(bytes32 slot) external view override returns (bytes memory) {
-    for (uint8 i; _strategies[i] != IInvestStrategy(address(0)) && i < MAX_STRATEGIES; i++) {
+    for (uint256 i; _strategies[i] != IInvestStrategy(address(0)) && i < MAX_STRATEGIES; i++) {
       if (slot == _strategies[i].storageSlot()) {
         StorageSlot.BytesSlot storage r = StorageSlot.getBytesSlot(slot);
         return r.value;
@@ -295,7 +295,7 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
   ) external onlyRole(STRATEGY_ADMIN_ROLE) {
     IInvestStrategy strategy = _strategies[strategyIndex];
     if (address(strategy) == address(0)) revert InvalidStrategy();
-    for (uint8 i; i < MAX_STRATEGIES && _strategies[i] != IInvestStrategy(address(0)); i++) {
+    for (uint256 i; i < MAX_STRATEGIES && _strategies[i] != IInvestStrategy(address(0)); i++) {
       if (_strategies[i] == newStrategy && i != strategyIndex) revert DuplicatedStrategy(newStrategy);
     }
     InvestStrategyClient.strategyChange(strategy, newStrategy, initStrategyData, IERC20Metadata(asset()), force);
@@ -312,16 +312,16 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     IInvestStrategy newStrategy,
     bytes memory initStrategyData
   ) external onlyRole(STRATEGY_ADMIN_ROLE) {
-    uint8 i;
+    uint256 i;
     for (; i < MAX_STRATEGIES && _strategies[i] != IInvestStrategy(address(0)); i++) {
       if (_strategies[i] == newStrategy) revert DuplicatedStrategy(newStrategy);
     }
     if (i == MAX_STRATEGIES) revert InvalidStrategiesLength();
     _strategies[i] = newStrategy;
-    _depositQueue[i] = i + 1;
-    _withdrawQueue[i] = i + 1;
+    _depositQueue[i] = uint8(i + 1);
+    _withdrawQueue[i] = uint8(i + 1);
     newStrategy.dcConnect(initStrategyData);
-    emit StrategyAdded(newStrategy, i);
+    emit StrategyAdded(newStrategy, uint8(i));
   }
 
   /**
@@ -338,7 +338,7 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     // Check isn't removing the last one
     if (strategyIndex == 0 && address(_strategies[1]) == address(0)) revert InvalidStrategiesLength();
     // Shift the following strategies in the array
-    uint8 i = strategyIndex + 1;
+    uint256 i = strategyIndex + 1;
     for (; i < MAX_STRATEGIES && _strategies[i] != IInvestStrategy(address(0)); i++) {
       _strategies[i - 1] = _strategies[i];
     }
@@ -382,7 +382,7 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
 
   function changeDepositQueue(uint8[] memory newDepositQueue_) external onlyRole(QUEUE_ADMIN_ROLE) {
     bool[MAX_STRATEGIES] memory seen;
-    uint8 i = 0;
+    uint256 i = 0;
     for (; i < newDepositQueue_.length; i++) {
       if (
         i >= MAX_STRATEGIES ||
