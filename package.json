@@ -1,5 +1,5 @@
 {
-  "name": "shared-smart-vault",
+  "name": "vaults",
   "version": "0.0.1",
   "scripts": {
     "prettier": "prettier --write 'contracts/**/*.sol' --write 'test/**/*.js'",
