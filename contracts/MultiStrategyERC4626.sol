@@ -162,11 +162,15 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
   /**
    * @dev See {IERC4626-maxWithdraw}.
    */
-  function maxWithdraw(address owner) public view virtual override returns (uint256 ret) {
+  function maxWithdraw(address owner) public view virtual override returns (uint256) {
     uint256 ownerAssets = super.maxWithdraw(owner);
+    return _maxWithdrawable(ownerAssets);
+  }
+
+  function _maxWithdrawable(uint256 limit) internal view returns (uint256 ret) {
     for (uint256 i; address(_strategies[i]) != address(0) && i < MAX_STRATEGIES; i++) {
       ret += _strategies[i].maxWithdraw();
-      if (ret >= ownerAssets) return ownerAssets;
+      if (ret >= limit) return limit;
     }
     return ret;
   }
@@ -175,8 +179,10 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
    * @dev See {IERC4626-maxRedeem}.
    */
   function maxRedeem(address owner) public view virtual override returns (uint256) {
-    uint256 maxAssets = maxWithdraw(owner);
-    return MathUpgradeable.min(_convertToShares(maxAssets, MathUpgradeable.Rounding.Down), super.maxRedeem(owner));
+    uint256 shares = super.maxRedeem(owner);
+    uint256 ownerAssets = _convertToAssets(shares, MathUpgradeable.Rounding.Down);
+    uint256 maxAssets = _maxWithdrawable(ownerAssets);
+    return (maxAssets == ownerAssets) ? shares : _convertToShares(maxAssets, MathUpgradeable.Rounding.Down);
   }
 
   /**
