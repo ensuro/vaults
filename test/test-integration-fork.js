@@ -1,14 +1,13 @@
 const { expect } = require("chai");
-const { amountFunction, _W, getRole, accessControlMessage, getTransactionEvent } = require("@ensuro/core/js/utils");
+const { amountFunction, _W, getRole } = require("@ensuro/core/js/utils");
 const { initForkCurrency, setupChain } = require("@ensuro/core/js/test-utils");
 const { buildUniswapConfig } = require("@ensuro/swaplibrary/js/utils");
-const { encodeSwapConfig, encodeDummyStorage } = require("./utils");
-const { anyUint } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
+const { encodeSwapConfig } = require("./utils");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
 const { ethers } = hre;
-const { MaxUint256, ZeroAddress } = hre.ethers;
+const { MaxUint256 } = hre.ethers;
 
 const ADDRESSES = {
   // polygon mainnet addresses
@@ -42,84 +41,9 @@ const ChainlinkABI = [
   },
 ];
 
-const CometABI = [
-  {
-    inputs: [
-      { internalType: "bool", name: "supplyPaused", type: "bool" },
-      { internalType: "bool", name: "transferPaused", type: "bool" },
-      { internalType: "bool", name: "withdrawPaused", type: "bool" },
-      { internalType: "bool", name: "absorbPaused", type: "bool" },
-      { internalType: "bool", name: "buyPaused", type: "bool" },
-    ],
-    name: "pause",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-  {
-    inputs: [{ internalType: "address", name: "account", type: "address" }],
-    name: "balanceOf",
-    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
-    stateMutability: "view",
-    type: "function",
-  },
-  { inputs: [], name: "Paused", type: "error" },
-];
-
-const PoolConfiguratorABI = [
-  {
-    inputs: [{ internalType: "bool", name: "paused", type: "bool" }],
-    name: "setPoolPause",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-  {
-    inputs: [
-      { internalType: "address", name: "asset", type: "address" },
-      { internalType: "bool", name: "active", type: "bool" },
-    ],
-    name: "setReserveActive",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-  {
-    inputs: [
-      { internalType: "address", name: "asset", type: "address" },
-      { internalType: "bool", name: "freeze", type: "bool" },
-    ],
-    name: "setReserveFreeze",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-  {
-    inputs: [
-      { internalType: "address", name: "asset", type: "address" },
-      { internalType: "bool", name: "paused", type: "bool" },
-    ],
-    name: "setReservePause",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-  {
-    inputs: [
-      { internalType: "address", name: "asset", type: "address" },
-      { internalType: "uint256", name: "newSupplyCap", type: "uint256" },
-    ],
-    name: "setSupplyCap",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-];
-
 const CURRENCY_DECIMALS = 6;
 const _A = amountFunction(CURRENCY_DECIMALS);
 const TEST_BLOCK = 55737565;
-const MCENT = 100n; // 1/100 of a cent
 const CENT = _A("0.01");
 const HOUR = 3600;
 const DAY = HOUR * 24;
@@ -211,12 +135,12 @@ describe("MultiStrategy Integration fork tests", function () {
     await vault.connect(lp).deposit(_A(5000), lp);
     await vault.connect(lp2).deposit(_A(7000), lp2);
 
-    expect(await vault.totalAssets()).to.be.closeTo(_A(12000), MCENT);
+    expect(await vault.totalAssets()).to.be.closeTo(_A(12000), CENT);
 
     await vault.connect(admin).rebalance(0, 1, _A(7000));
 
-    expect(await aaveStrategy.totalAssets(vault)).to.closeTo(_A(5000), MCENT);
-    expect(await compoundStrategy.totalAssets(vault)).to.closeTo(_A(7000), MCENT);
+    expect(await aaveStrategy.totalAssets(vault)).to.closeTo(_A(5000), CENT);
+    expect(await compoundStrategy.totalAssets(vault)).to.closeTo(_A(7000), CENT);
 
     await helpers.time.increase(MONTH);
     expect(await aaveStrategy.totalAssets(vault)).to.closeTo(_A("5061.125277"), CENT);
