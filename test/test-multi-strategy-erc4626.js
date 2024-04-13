@@ -338,7 +338,7 @@ describe("MultiStrategyERC4626 contract tests", function () {
     await invariantChecks(vault);
 
     expect(await vault.totalAssets()).to.be.equal(_A(100));
-    // Check money went to strategy[3]
+    // Check money went to strategy[1]
     expect(await currency.balanceOf(await strategies[1].other())).to.be.equal(_A(100));
 
     expect(await vault.depositQueue()).to.deep.equal([2, 1, 3].concat(Array(MAX_STRATEGIES - 3).fill(0)));
@@ -446,6 +446,35 @@ describe("MultiStrategyERC4626 contract tests", function () {
     expect(await vault.withdrawQueue()).to.deep.equal([1].concat(Array(MAX_STRATEGIES - 1).fill(0)));
 
     await expect(vault.connect(lp).redeem(_A(100), lp, lp)).not.to.be.reverted;
+
+    await expect(vault.connect(lp2).removeStrategy(0, false)).to.be.revertedWithCustomError(
+      vault,
+      "InvalidStrategiesLength"
+    );
+  });
+
+  it("It can removeStrategy in different order", async () => {
+    const { deployVault, lp2, admin, strategies } = await helpers.loadFixture(setUp);
+    const vault = await deployVault(3, undefined, [1, 0, 2], [2, 0, 1]);
+
+    await vault.connect(admin).grantRole(getRole("STRATEGY_ADMIN_ROLE"), lp2);
+
+    await expect(vault.connect(lp2).removeStrategy(1, false))
+      .to.emit(vault, "StrategyRemoved")
+      .withArgs(strategies[1], 1);
+    await invariantChecks(vault);
+
+    // Indexes changed but kept in the same order
+    expect(await vault.depositQueue()).to.deep.equal([1, 2].concat(Array(MAX_STRATEGIES - 2).fill(0)));
+    expect(await vault.withdrawQueue()).to.deep.equal([2, 1].concat(Array(MAX_STRATEGIES - 2).fill(0)));
+
+    await expect(vault.connect(lp2).removeStrategy(1, false))
+      .to.emit(vault, "StrategyRemoved")
+      .withArgs(strategies[2], 1);
+    await invariantChecks(vault);
+
+    expect(await vault.depositQueue()).to.deep.equal([1].concat(Array(MAX_STRATEGIES - 1).fill(0)));
+    expect(await vault.withdrawQueue()).to.deep.equal([1].concat(Array(MAX_STRATEGIES - 1).fill(0)));
 
     await expect(vault.connect(lp2).removeStrategy(0, false)).to.be.revertedWithCustomError(
       vault,
