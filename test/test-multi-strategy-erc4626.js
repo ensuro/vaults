@@ -350,8 +350,9 @@ describe("MultiStrategyERC4626 contract tests", function () {
 
     await vault.connect(admin).grantRole(getRole("STRATEGY_ADMIN_ROLE"), lp2);
 
-    await expect(vault.connect(lp2).addStrategy(ZeroAddress, encodeDummyStorage({}))).to.be.revertedWith(
-      "Address: call to non-contract"
+    await expect(vault.connect(lp2).addStrategy(ZeroAddress, encodeDummyStorage({}))).to.be.revertedWithCustomError(
+      vault,
+      "InvalidStrategy"
     );
 
     await expect(vault.connect(lp2).addStrategy(strategies[1], encodeDummyStorage({}))).to.be.revertedWithCustomError(

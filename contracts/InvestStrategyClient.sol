@@ -19,6 +19,8 @@ library InvestStrategyClient {
   event DepositFailed(bytes reason);
   event DisconnectFailed(bytes reason);
 
+  error InvalidStrategyAsset();
+
   function dcConnect(IInvestStrategy strategy, bytes memory initStrategyData) internal {
     address(strategy).functionDelegateCall(abi.encodeCall(IInvestStrategy.connect, initStrategyData));
   }
@@ -68,6 +70,10 @@ library InvestStrategyClient {
       address(strategy).functionDelegateCall(abi.encodeCall(IInvestStrategy.forwardEntryPoint, (method, extraData)));
   }
 
+  function checkAsset(IInvestStrategy strategy, address asset) internal view {
+    if (strategy.asset(address(this)) != asset) revert InvalidStrategyAsset();
+  }
+
   function strategyChange(
     IInvestStrategy oldStrategy,
     IInvestStrategy newStrategy,
@@ -75,6 +81,7 @@ library InvestStrategyClient {
     IERC20Metadata asset,
     bool force
   ) internal {
+    checkAsset(newStrategy, address(asset));
     // I explicitly don't check newStrategy != _strategy because in some cases might be usefull to disconnect and
     // connect a strategy
     dcWithdraw(oldStrategy, oldStrategy.totalAssets(address(this)), force);
