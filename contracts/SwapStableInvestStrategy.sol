@@ -67,6 +67,10 @@ contract SwapStableInvestStrategy is IInvestStrategy {
     _price = price_;
   }
 
+  function _toWadFactor(IERC20Metadata token) internal view returns (uint256) {
+    return 10 ** (18 - token.decimals());
+  }
+
   function connect(bytes memory initData) external virtual override onlyDelegCall {
     _setSwapConfigNoCheck(SwapLibrary.SwapConfig(SwapLibrary.SwapProtocol.undefined, 0, bytes("")), initData);
   }
@@ -86,10 +90,10 @@ contract SwapStableInvestStrategy is IInvestStrategy {
   function totalAssets(address contract_) public view virtual override returns (uint256 assets) {
     return
       Math.mulDiv(
-        Math.mulDiv(_investAsset.balanceOf(contract_), _price, WAD),
+        Math.mulDiv(_investAsset.balanceOf(contract_) * _toWadFactor(_investAsset), _price, WAD),
         WAD - _getSwapConfig(contract_).maxSlippage,
         WAD
-      );
+      ) / _toWadFactor(_asset);
   }
 
   function withdraw(uint256 assets) external virtual override onlyDelegCall {
@@ -129,7 +133,7 @@ contract SwapStableInvestStrategy is IInvestStrategy {
     if (checkedMethod == ForwardMethods.setSwapConfig) {
       _setSwapConfig(params);
     }
-    // Show never reach to this revert, since method should be one of the enum values but leave it in case
+    // Should never reach to this revert, since method should be one of the enum values but leave it in case
     // we add new values in the enum and we forgot to add them here
     // solhint-disable-next-line custom-errors,reason-string
     else revert();
