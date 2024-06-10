@@ -62,6 +62,13 @@ interface IInvestStrategy {
   // Views
 
   /**
+   * @dev The address of the underlying token used for accounting, depositing, and withdrawing.
+   *
+   * @param contract_ The address of the contract that owns the assets.
+   */
+  function asset(address contract_) external view returns (address);
+
+  /**
    * @dev Returns the number of assets under management of the investment strategy for a given contract.
    *
    * @param contract_ The address of the contract that owns the assets.

@@ -82,6 +82,10 @@ contract CompoundV3InvestStrategy is IInvestStrategy {
     return type(uint256).max;
   }
 
+  function asset(address) public view virtual override returns (address) {
+    return _baseToken;
+  }
+
   function totalAssets(address contract_) public view virtual override returns (uint256 assets) {
     return _cToken.balanceOf(contract_);
   }
