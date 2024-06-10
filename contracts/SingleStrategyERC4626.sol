@@ -87,6 +87,7 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     bytes memory initStrategyData
   ) internal onlyInitializing {
     _strategy = strategy_;
+    strategy_.checkAsset(asset());
     _strategy.dcConnect(initStrategyData);
   }
 

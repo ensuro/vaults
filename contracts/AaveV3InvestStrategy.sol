@@ -69,6 +69,10 @@ contract AaveV3InvestStrategy is IInvestStrategy {
     return type(uint256).max;
   }
 
+  function asset(address) public view virtual override returns (address) {
+    return address(_asset);
+  }
+
   function totalAssets(address contract_) public view virtual override returns (uint256 assets) {
     return IERC20(_reserveData().aTokenAddress).balanceOf(contract_);
   }

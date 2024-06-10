@@ -156,4 +156,50 @@ describe("SingleStrategyERC4626 contract tests", function () {
       "DisconnectFailed"
     );
   });
+
+  it("Initialization fails if strategy and vault have different assets", async () => {
+    const { SingleStrategyERC4626, DummyInvestStrategy, adminAddr, currency } = await helpers.loadFixture(setUp);
+
+    const differentCurrency = await initCurrency(
+      { name: "Different USDC", symbol: "DUSDC", decimals: 6, initial_supply: _A(50000) },
+      []
+    );
+
+    const differentStrategy = await DummyInvestStrategy.deploy(differentCurrency);
+
+    await expect(
+      hre.upgrades.deployProxy(
+        SingleStrategyERC4626,
+        [
+          NAME,
+          SYMB,
+          adminAddr,
+          await ethers.resolveAddress(currency),
+          await ethers.resolveAddress(differentStrategy),
+          encodeDummyStorage({}),
+        ],
+        {
+          kind: "uups",
+          unsafeAllow: ["delegatecall"],
+        }
+      )
+    ).to.be.revertedWithCustomError(SingleStrategyERC4626, "InvalidStrategyAsset");
+  });
+
+  it("Fails to add strategy to vault if assets are different", async () => {
+    const { vault, DummyInvestStrategy, admin, SingleStrategyERC4626 } = await helpers.loadFixture(setUp);
+
+    const differentCurrency = await initCurrency(
+      { name: "Different USDC", symbol: "DUSDC", decimals: 6, initial_supply: _A(50000) },
+      []
+    );
+
+    const differentStrategy = await DummyInvestStrategy.deploy(differentCurrency);
+
+    await vault.connect(admin).grantRole(getRole("SET_STRATEGY_ROLE"), admin);
+
+    await expect(
+      vault.connect(admin).setStrategy(differentStrategy, encodeDummyStorage({}), false)
+    ).to.be.revertedWithCustomError(SingleStrategyERC4626, "InvalidStrategyAsset");
+  });
 });

@@ -138,6 +138,7 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     bool[MAX_STRATEGIES] memory presentInWithdraw;
     for (uint256 i; i < strategies_.length; i++) {
       if (address(strategies_[i]) == address(0)) revert InvalidStrategy();
+      strategies_[i].checkAsset(asset());
       // Check strategies_[i] not duplicated
       for (uint256 j; j < i; j++) {
         if (strategies_[i] == strategies_[j]) revert DuplicatedStrategy(strategies_[i]);
@@ -318,6 +319,7 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     IInvestStrategy newStrategy,
     bytes memory initStrategyData
   ) external onlyRole(STRATEGY_ADMIN_ROLE) {
+    if (address(newStrategy) == address(0)) revert InvalidStrategy();
     uint256 i;
     for (; i < MAX_STRATEGIES && _strategies[i] != IInvestStrategy(address(0)); i++) {
       if (_strategies[i] == newStrategy) revert DuplicatedStrategy(newStrategy);
@@ -326,6 +328,7 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     _strategies[i] = newStrategy;
     _depositQueue[i] = uint8(i + 1);
     _withdrawQueue[i] = uint8(i + 1);
+    newStrategy.checkAsset(asset());
     newStrategy.dcConnect(initStrategyData);
     emit StrategyAdded(newStrategy, uint8(i));
   }

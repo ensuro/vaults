@@ -76,6 +76,10 @@ contract DummyInvestStrategy is IInvestStrategy {
     return type(uint256).max;
   }
 
+  function asset(address) public view virtual override returns (address) {
+    return address(_asset);
+  }
+
   function totalAssets(address) public view virtual override returns (uint256 assets) {
     return _asset.balanceOf(other);
   }
