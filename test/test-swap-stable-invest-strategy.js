@@ -1,19 +1,23 @@
 const { expect } = require("chai");
 const { amountFunction, _W, getRole, accessControlMessage } = require("@ensuro/core/js/utils");
 const { buildUniswapConfig } = require("@ensuro/swaplibrary/js/utils");
-const { encodeSwapConfig } = require("./utils");
+const { encodeSwapConfig, encodeDummyStorage, dummyStorage } = require("./utils");
 const { initCurrency } = require("@ensuro/core/js/test-utils");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
 const { ethers } = hre;
-const { MaxUint256 } = hre.ethers;
+const { MaxUint256, ZeroAddress } = hre.ethers;
 
 const CURRENCY_DECIMALS = 6;
 const _A = amountFunction(CURRENCY_DECIMALS);
 const INITIAL = 10000;
 const NAME = "Single Strategy Vault";
 const SYMB = "SSV";
+
+const SwapStableInvestStrategyMethods = {
+  setSwapConfig: 0
+};
 
 async function setUp() {
   const [, lp, lp2, anon, guardian, admin] = await ethers.getSigners();
@@ -47,6 +51,7 @@ async function setUp() {
   await uniswapRouterMock.setCurrentPrice(currM, currB, _W(1));
 
   const adminAddr = await ethers.resolveAddress(admin);
+  const DummyInvestStrategy = await ethers.getContractFactory("DummyInvestStrategy");
   const SwapLibrary = await ethers.getContractFactory("SwapLibrary");
   const swapLibrary = await SwapLibrary.deploy();
   const SwapStableInvestStrategy = await ethers.getContractFactory("SwapStableInvestStrategy", {
@@ -81,6 +86,7 @@ async function setUp() {
     currM,
     SingleStrategyERC4626,
     SwapStableInvestStrategy,
+    DummyInvestStrategy,
     adminAddr,
     swapLibrary,
     lp,
@@ -127,4 +133,92 @@ describe("SwapStableInvestStrategy contract tests", function () {
     expect(await currM.balanceOf(vault)).to.equal(_W(100));
     expect(await currA.balanceOf(vault)).to.equal(_A(0));
   });
+
+  it("Checks only authorized can setStrategy [SwapStableStrategy]", async () => {
+    const { SwapStableInvestStrategy, setupVault, currA, currM, lp, anon, admin, swapConfig, swapLibrary } = await helpers.loadFixture(setUp);
+    const strategy = await SwapStableInvestStrategy.deploy(currA, currM, _W(1));
+    const vault = await setupVault(currA, strategy);
+
+    await expect(vault.forwardToStrategy(123, ethers.toUtf8Bytes(""))).to.be.reverted;
+
+    expect(await vault.strategy()).to.equal(strategy);
+
+    await expect(vault.connect(anon).setStrategy(ZeroAddress, ethers.toUtf8Bytes(""), false)).to.be.revertedWith(
+      accessControlMessage(anon, null, "SET_STRATEGY_ROLE")
+    );
+
+    await vault.connect(admin).grantRole(getRole("SET_STRATEGY_ROLE"), anon);
+
+    await expect(vault.connect(anon).setStrategy(ZeroAddress, ethers.toUtf8Bytes(""), false)).to.be.reverted;
+  });
+
+  it("Checks methods can't be called directly", async () => {
+    const { SwapStableInvestStrategy, currA, currB } = await helpers.loadFixture(setUp);
+    const strategy = await SwapStableInvestStrategy.deploy(currA, currB, _W(1));
+
+    await expect(strategy.getFunction("connect")(ethers.toUtf8Bytes(""))).to.be.revertedWithCustomError(
+      strategy,
+      "CanBeCalledOnlyThroughDelegateCall"
+    );
+
+    await expect(strategy.disconnect(false)).to.be.revertedWithCustomError(
+      strategy,
+      "CanBeCalledOnlyThroughDelegateCall"
+    );
+
+    await expect(strategy.deposit(123)).to.be.revertedWithCustomError(strategy, "CanBeCalledOnlyThroughDelegateCall");
+    
+    await expect(strategy.withdraw(123)).to.be.revertedWithCustomError(
+      strategy,
+      "CanBeCalledOnlyThroughDelegateCall"
+    );
+
+    await expect(strategy.forwardEntryPoint(1, ethers.toUtf8Bytes(""))).to.be.revertedWithCustomError(
+      strategy,
+      "CanBeCalledOnlyThroughDelegateCall"
+    );
+  });
+
+  it("Checks onlyRole modifier & setSwapConfig function", async () => {
+    const { SwapStableInvestStrategy, currA, currB, anon, admin, swapConfig, setupVault } = await helpers.loadFixture(setUp);
+    const strategy = await SwapStableInvestStrategy.deploy(currA, currB, _W(1));
+    const vault = await setupVault(currA, strategy);
+    const newSwapConfigAsBytes = encodeSwapConfig(swapConfig);
+    const modifiedSwapConfig = [ ...swapConfig, 'extraData' ];
+    // Just for out attempt to call setSwapConfig with extra data, encodeSwapConfig only accepts three elements in out tuple.
+    const modifiedSwapConfigAsBytes = ethers.AbiCoder.defaultAbiCoder().encode(["tuple(uint8, uint256, bytes, string)"], [modifiedSwapConfig]);
+
+    await expect(
+      vault.connect(anon).forwardToStrategy(SwapStableInvestStrategyMethods.setSwapConfig, newSwapConfigAsBytes)
+    ).to.be.revertedWithCustomError(strategy, "AccessControlUnauthorizedAccount");
+
+    await vault.connect(admin).grantRole(await getRole("SWAP_ADMIN_ROLE"), anon);
+
+    await expect(
+      vault.connect(anon).forwardToStrategy(SwapStableInvestStrategyMethods.setSwapConfig, newSwapConfigAsBytes)
+    ).to.not.be.reverted;
+
+    // We attempt to call setSwapConfig with extra data (e.g., modifiedSwapConfig --> modifiedSwapConfigAsBytes).
+    await expect(
+      vault.connect(anon).forwardToStrategy(SwapStableInvestStrategyMethods.setSwapConfig, modifiedSwapConfigAsBytes)
+    ).to.be.revertedWithCustomError(strategy, "NoExtraDataAllowed");
+  });
+
+  it("Should return the correct swap configuration", async () => {
+    const { SwapStableInvestStrategy, setupVault, currA, currB, swapConfig, admin, anon } = await helpers.loadFixture(setUp);
+    const strategy = await SwapStableInvestStrategy.deploy(currA, currB, _W(1));
+    const vault = await setupVault(currA, strategy);
+
+    const newSwapConfigAsBytes = encodeSwapConfig(swapConfig);
+
+    await vault.connect(admin).grantRole(await getRole("SWAP_ADMIN_ROLE"), anon);
+
+    await vault.connect(anon).forwardToStrategy(
+      SwapStableInvestStrategyMethods.setSwapConfig,
+      newSwapConfigAsBytes
+    );
+    
+    expect(await strategy.getSwapConfig(vault, strategy)).to.deep.equal(swapConfig);
+  });
+  
 });

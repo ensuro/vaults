@@ -87,6 +87,10 @@ contract SwapStableInvestStrategy is IInvestStrategy {
     return type(uint256).max; // TODO: check how much can be swapped without breaking the slippage
   }
 
+  function asset(address) public view virtual override returns (address) {
+    return address(_asset);
+  }
+
   function totalAssets(address contract_) public view virtual override returns (uint256 assets) {
     return
       Math.mulDiv(
