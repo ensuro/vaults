@@ -3,11 +3,27 @@ const { amountFunction, _W, getRole, accessControlMessage } = require("@ensuro/c
 const { buildUniswapConfig } = require("@ensuro/swaplibrary/js/utils");
 const { encodeSwapConfig, encodeDummyStorage, dummyStorage } = require("./utils");
 const { initCurrency } = require("@ensuro/core/js/test-utils");
+const { anyUint } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
 const { ethers } = hre;
 const { MaxUint256, ZeroAddress } = hre.ethers;
+
+const ADDRESSES = {
+  // polygon mainnet addresses
+  UNISWAP: "0xE592427A0AEce92De3Edee1F18E0157C05861564",
+  USDC: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+  USDCWhale: "0x4d97dcd97ec945f40cf65f87097ace5ea0476045",
+  cUSDCv3: "0xF25212E676D1F7F89Cd72fFEe66158f541246445",
+  REWARDS: "0x45939657d1CA34A8FA39A924B71D28Fe8431e581",
+  COMP: "0x8505b9d2254A7Ae468c0E9dd10Ccea3A837aef5c",
+  cUSDCv3_GUARDIAN: "0x8Ab717CAC3CbC4934E63825B88442F5810aAF6e5",
+  AAVEv3: "0x794a61358D6845594F94dc1DB02A252b5b4814aD",
+  aUSDCv3: "0x625E7708f30cA75bfd92586e17077590C60eb4cD",
+  AAVEPoolConfigurator: "0x8145eddDf43f50276641b55bd3AD95944510021E",
+  AAVEPoolAdmin: "0xDf7d0e6454DB638881302729F5ba99936EaAB233",
+};
 
 const CURRENCY_DECIMALS = 6;
 const _A = amountFunction(CURRENCY_DECIMALS);
@@ -219,6 +235,97 @@ describe("SwapStableInvestStrategy contract tests", function () {
     );
     
     expect(await strategy.getSwapConfig(vault, strategy)).to.deep.equal(swapConfig);
+  });
+
+  it("Withdraw function executes swap correctly and emits correct events - currA(6) -> currB(6)", async () => {
+    const { SwapStableInvestStrategy, setupVault, currA, currB, lp } = await helpers.loadFixture(setUp);
+    const strategy = await SwapStableInvestStrategy.deploy(currA, currB, _W(1));
+    const vault = await setupVault(currA, strategy);
+  
+    await vault.connect(lp).deposit(_A(100), lp);
+  
+    const initialBalanceInvestAsset = await currB.balanceOf(vault);
+  
+    await expect(vault.connect(lp).withdraw(_A(50), lp, lp))
+      .to.emit(vault, "Withdraw")
+      .withArgs(lp, lp, lp, _A(50), anyUint);
+  
+    expect(await currB.balanceOf(vault)).to.equal(initialBalanceInvestAsset - _A(50));
+  
+    await expect(vault.connect(lp).withdraw(_A(49.9), lp, lp))
+      .to.emit(vault, "Withdraw")
+      .withArgs(lp, lp, lp, _A(49.9), anyUint);
+  
+    expect(await currB.balanceOf(vault)).to.equal(_A(0.1));
+  });
+  
+  it("Withdraw function executes swap correctly and emits correct events - currA(6) -> currM(18)", async () => {
+    const { SwapStableInvestStrategy, setupVault, currA, currM, lp } = await helpers.loadFixture(setUp);
+    const strategy = await SwapStableInvestStrategy.deploy(currA, currM, _W(1));
+    const vault = await setupVault(currA, strategy);
+  
+    await vault.connect(lp).deposit(_A(100), lp);
+  
+    await expect(vault.connect(lp).withdraw(_A(50), lp, lp))
+      .to.emit(vault, "Withdraw")
+      .withArgs(lp, lp, lp, _A(50), anyUint);
+  
+    expect(await currM.balanceOf(vault)).to.equal(ethers.parseUnits("50", 18));
+  
+    await expect(vault.connect(lp).withdraw(_A(49.9), lp, lp))
+      .to.emit(vault, "Withdraw")
+      .withArgs(lp, lp, lp, _A(49.9), anyUint);
+  
+    expect(await currM.balanceOf(vault)).to.equal(ethers.parseUnits("0.1", 18));
+  });
+  
+  it("Withdraw function fails", async () => {
+    const { SwapStableInvestStrategy, setupVault, currA, currM, lp } = await helpers.loadFixture(setUp);
+    const strategy = await SwapStableInvestStrategy.deploy(currA, currM, _W(1));
+    const vault = await setupVault(currA, strategy);
+  
+    await vault.connect(lp).deposit(_A(100), lp);
+  
+    await expect(vault.connect(lp).withdraw(_A(200), lp, lp)).to.be.revertedWith(
+      "ERC4626: withdraw more than max"
+    );
+  
+    await expect(vault.connect(lp).withdraw(_A(0), lp, lp)).to.be.revertedWith(
+      "AmountOut cannot be zero"
+    );
+  });
+
+  it("setStrategy should work and disconnect strategy when authorized", async function () {
+    const { SwapStableInvestStrategy, setupVault, currA, currM, anon, admin } = await helpers.loadFixture(setUp);
+    const strategy = await SwapStableInvestStrategy.deploy(currA, currM, _W(1));
+    const vault = await setupVault(currA, strategy);
+
+    const DummyInvestStrategy = await ethers.getContractFactory("DummyInvestStrategy");
+    const dummyStrategy = await DummyInvestStrategy.deploy(currA);
+
+    await vault.connect(admin).grantRole(getRole("SET_STRATEGY_ROLE"), anon);
+
+    const tx = await vault.connect(anon).setStrategy(dummyStrategy, encodeDummyStorage({}), true);
+
+    await expect(tx)
+      .to.emit(vault, "StrategyChanged")
+      .withArgs(strategy, dummyStrategy)
+  });
+
+  it("Disconnect should fail when force false and with asset", async function () {
+    const { SwapStableInvestStrategy, setupVault, currA, currB, lp, admin } = await helpers.loadFixture(setUp);
+    const strategy = await SwapStableInvestStrategy.deploy(currA, currB, _W(1));
+    const vault = await setupVault(currA, strategy);
+
+    const DummyInvestStrategy = await ethers.getContractFactory("DummyInvestStrategy");
+    const dummyStrategy = await DummyInvestStrategy.deploy(currA);
+
+    await vault.connect(admin).grantRole(getRole("SET_STRATEGY_ROLE"), lp);
+    await expect(vault.connect(lp).setStrategy(dummyStrategy, encodeDummyStorage({}), false)).to.be.revertedWith("AmountOut cannot be zero");
+
+    await vault.connect(lp).deposit(_A(100), lp);
+
+    await expect(vault.connect(lp).setStrategy(dummyStrategy, encodeDummyStorage({}), false)).to.be.revertedWithCustomError(strategy, "CannotDisconnectWithAssets");
   });
   
 });
