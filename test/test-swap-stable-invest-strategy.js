@@ -171,6 +171,40 @@ variants.forEach((variant) => {
       expect(await currA.balanceOf(vault)).to.equal(_a(0));
     });
 
+    it("Withdraw function executes swap correctly and emits correct events - currA(6) -> currB(6)", async () => {
+      const { SwapStableInvestStrategy, setupVault, currA, currB, lp, _a, _i } = await variant.fixture();
+      const strategy = await SwapStableInvestStrategy.deploy(currA, currB, _W(1));
+      const vault = await setupVault(currA, strategy);
+
+      await vault.connect(lp).deposit(_a(100), lp);
+
+      const initialBalanceInvestAsset = await currB.balanceOf(vault);
+
+      await expect(vault.connect(lp).withdraw(_a(50), lp, lp))
+        .to.emit(vault, "Withdraw")
+        .withArgs(lp, lp, lp, _a(50), anyUint);
+
+      expect(await currB.balanceOf(vault)).to.equal(initialBalanceInvestAsset - _i(50));
+
+      await expect(vault.connect(lp).withdraw(_a(49.9), lp, lp))
+        .to.emit(vault, "Withdraw")
+        .withArgs(lp, lp, lp, _a(49.9), anyUint);
+
+      expect(await currB.balanceOf(vault)).to.equal(_i(0.1));
+    });
+
+    it("Withdraw function fails", async () => {
+      const { SwapStableInvestStrategy, setupVault, currA, currB, lp, _a } = await variant.fixture();
+      const strategy = await SwapStableInvestStrategy.deploy(currA, currB, _W(1));
+      const vault = await setupVault(currA, strategy);
+
+      await vault.connect(lp).deposit(_a(100), lp);
+
+      await expect(vault.connect(lp).withdraw(_a(200), lp, lp)).to.be.revertedWith("ERC4626: withdraw more than max");
+
+      await expect(vault.connect(lp).withdraw(_a(0), lp, lp)).to.be.revertedWith("AmountOut cannot be zero");
+    });
+
     it("Checks methods can't be called directly", async () => {
       const { SwapStableInvestStrategy, currA, currB } = await variant.fixture();
       const strategy = await SwapStableInvestStrategy.deploy(currA, currB, _W(1));
@@ -249,40 +283,6 @@ variants.forEach((variant) => {
       await vault.connect(anon).forwardToStrategy(SwapStableInvestStrategyMethods.setSwapConfig, newSwapConfigAsBytes);
 
       expect(await strategy.getSwapConfig(vault, strategy)).to.deep.equal(newSwapConfig);
-    });
-
-    it("Withdraw function executes swap correctly and emits correct events - currA(6) -> currB(6)", async () => {
-      const { SwapStableInvestStrategy, setupVault, currA, currB, lp, _a, _i } = await variant.fixture();
-      const strategy = await SwapStableInvestStrategy.deploy(currA, currB, _W(1));
-      const vault = await setupVault(currA, strategy);
-
-      await vault.connect(lp).deposit(_a(100), lp);
-
-      const initialBalanceInvestAsset = await currB.balanceOf(vault);
-
-      await expect(vault.connect(lp).withdraw(_a(50), lp, lp))
-        .to.emit(vault, "Withdraw")
-        .withArgs(lp, lp, lp, _a(50), anyUint);
-
-      expect(await currB.balanceOf(vault)).to.equal(initialBalanceInvestAsset - _i(50));
-
-      await expect(vault.connect(lp).withdraw(_a(49.9), lp, lp))
-        .to.emit(vault, "Withdraw")
-        .withArgs(lp, lp, lp, _a(49.9), anyUint);
-
-      expect(await currB.balanceOf(vault)).to.equal(_i(0.1));
-    });
-
-    it("Withdraw function fails", async () => {
-      const { SwapStableInvestStrategy, setupVault, currA, currB, lp, _a } = await variant.fixture();
-      const strategy = await SwapStableInvestStrategy.deploy(currA, currB, _W(1));
-      const vault = await setupVault(currA, strategy);
-
-      await vault.connect(lp).deposit(_a(100), lp);
-
-      await expect(vault.connect(lp).withdraw(_a(200), lp, lp)).to.be.revertedWith("ERC4626: withdraw more than max");
-
-      await expect(vault.connect(lp).withdraw(_a(0), lp, lp)).to.be.revertedWith("AmountOut cannot be zero");
     });
 
     it("setStrategy should work and disconnect strategy when authorized", async function () {
