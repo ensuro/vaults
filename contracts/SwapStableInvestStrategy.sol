@@ -91,6 +91,10 @@ contract SwapStableInvestStrategy is IInvestStrategy {
     return address(_asset);
   }
 
+  function investAsset(address) public view returns (address) {
+    return address(_investAsset);
+  }
+
   function totalAssets(address contract_) public view virtual override returns (uint256 assets) {
     return
       Math.mulDiv(

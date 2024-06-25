@@ -2,7 +2,7 @@ const { expect } = require("chai");
 const { amountFunction, _W, getRole, accessControlMessage, getTransactionEvent } = require("@ensuro/core/js/utils");
 const { initForkCurrency, setupChain } = require("@ensuro/core/js/test-utils");
 const { buildUniswapConfig } = require("@ensuro/swaplibrary/js/utils");
-const { encodeSwapConfig, encodeDummyStorage } = require("./utils");
+const { encodeSwapConfig, encodeDummyStorage, tagit } = require("./utils");
 const { anyUint } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
@@ -133,29 +133,6 @@ async function setUp() {
     admin,
     swapLibrary,
   };
-}
-
-const tagRegExp = new RegExp("\\[(?<neg>[!])?(?<variant>[a-zA-Z0-9]+)\\]", "gu");
-
-function tagit(testDescription, test, only = false) {
-  let any = false;
-  const iit = only || this.only ? it.only : it;
-  for (const m of testDescription.matchAll(tagRegExp)) {
-    if (m === undefined) break;
-    const neg = m.groups.neg !== undefined;
-    any = any || !neg;
-    if (m.groups.variant === this.name) {
-      if (!neg) {
-        // If tag found and not negated, run the it
-        iit(testDescription, test);
-        return;
-      }
-      // If tag found and negated, don't run the it
-      return;
-    }
-  }
-  // If no positive tags, run the it
-  if (!any) iit(testDescription, test);
 }
 
 const CompoundV3StrategyMethods = {
