@@ -148,7 +148,7 @@ const variants = [
 
 variants.forEach((variant) => {
   describe(`SwapStableInvestStrategy contract tests ${variant.name}`, function () {
-    it("Initializes the vault correctly", async () => {
+    variant.tagit("Initializes the vault correctly", async () => {
       const { SwapStableInvestStrategy, setupVault, currA, currB } = await variant.fixture();
       const strategy = await SwapStableInvestStrategy.deploy(currA, currB, _W(1));
       const vault = await setupVault(currA, strategy);
@@ -161,7 +161,7 @@ variants.forEach((variant) => {
       expect(await strategy.investAsset(vault)).to.equal(currB);
     });
 
-    it("Deposit and accounting works", async () => {
+    variant.tagit("Deposit and accounting works", async () => {
       const { SwapStableInvestStrategy, setupVault, currA, currB, lp, _a, _i } = await variant.fixture();
       const strategy = await SwapStableInvestStrategy.deploy(currA, currB, _W(1));
       const vault = await setupVault(currA, strategy);
@@ -171,29 +171,32 @@ variants.forEach((variant) => {
       expect(await currA.balanceOf(vault)).to.equal(_a(0));
     });
 
-    it("Withdraw function executes swap correctly and emits correct events - currA(6) -> currB(6)", async () => {
-      const { SwapStableInvestStrategy, setupVault, currA, currB, lp, _a, _i } = await variant.fixture();
-      const strategy = await SwapStableInvestStrategy.deploy(currA, currB, _W(1));
-      const vault = await setupVault(currA, strategy);
+    variant.tagit(
+      "Withdraw function executes swap correctly and emits correct events - currA(6) -> currB(6)",
+      async () => {
+        const { SwapStableInvestStrategy, setupVault, currA, currB, lp, _a, _i } = await variant.fixture();
+        const strategy = await SwapStableInvestStrategy.deploy(currA, currB, _W(1));
+        const vault = await setupVault(currA, strategy);
 
-      await vault.connect(lp).deposit(_a(100), lp);
+        await vault.connect(lp).deposit(_a(100), lp);
 
-      const initialBalanceInvestAsset = await currB.balanceOf(vault);
+        const initialBalanceInvestAsset = await currB.balanceOf(vault);
 
-      await expect(vault.connect(lp).withdraw(_a(50), lp, lp))
-        .to.emit(vault, "Withdraw")
-        .withArgs(lp, lp, lp, _a(50), anyUint);
+        await expect(vault.connect(lp).withdraw(_a(50), lp, lp))
+          .to.emit(vault, "Withdraw")
+          .withArgs(lp, lp, lp, _a(50), anyUint);
 
-      expect(await currB.balanceOf(vault)).to.equal(initialBalanceInvestAsset - _i(50));
+        expect(await currB.balanceOf(vault)).to.equal(initialBalanceInvestAsset - _i(50));
 
-      await expect(vault.connect(lp).withdraw(_a(49.9), lp, lp))
-        .to.emit(vault, "Withdraw")
-        .withArgs(lp, lp, lp, _a(49.9), anyUint);
+        await expect(vault.connect(lp).withdraw(_a(49.9), lp, lp))
+          .to.emit(vault, "Withdraw")
+          .withArgs(lp, lp, lp, _a(49.9), anyUint);
 
-      expect(await currB.balanceOf(vault)).to.equal(_i(0.1));
-    });
+        expect(await currB.balanceOf(vault)).to.equal(_i(0.1));
+      }
+    );
 
-    it("Withdraw function fails", async () => {
+    variant.tagit("Withdraw function fails", async () => {
       const { SwapStableInvestStrategy, setupVault, currA, currB, lp, _a } = await variant.fixture();
       const strategy = await SwapStableInvestStrategy.deploy(currA, currB, _W(1));
       const vault = await setupVault(currA, strategy);
@@ -205,7 +208,47 @@ variants.forEach((variant) => {
       await expect(vault.connect(lp).withdraw(_a(0), lp, lp)).to.be.revertedWith("AmountOut cannot be zero");
     });
 
-    it("Checks methods can't be called directly", async () => {
+    variant.tagit("Deposit and accounting works when price != 1", async () => {
+      const { SwapStableInvestStrategy, setupVault, currA, currB, lp, _a, _i, uniswapRouterMock } =
+        await variant.fixture();
+      await uniswapRouterMock.setCurrentPrice(currA, currB, _W("0.5"));
+      await uniswapRouterMock.setCurrentPrice(currB, currA, _W("2"));
+      const strategy = await SwapStableInvestStrategy.deploy(currA, currB, _W("0.5")); // price = 0.5 A/B
+      const vault = await setupVault(currA, strategy);
+      await vault.connect(lp).deposit(_a(100), lp);
+      expect(await vault.totalAssets()).to.equal(_a("99.9")); // 0.01 slippage
+      expect(await currB.balanceOf(vault)).to.equal(_i(200));
+      expect(await currA.balanceOf(vault)).to.equal(_a(0));
+
+      await expect(vault.connect(lp).withdraw(_a(50), lp, lp))
+        .to.emit(vault, "Withdraw")
+        .withArgs(lp, lp, lp, _a(50), anyUint);
+      expect(await currB.balanceOf(vault)).to.equal(_i(100));
+      expect(await currA.balanceOf(vault)).to.equal(_a(0));
+      expect(await currA.balanceOf(lp)).to.equal(_a(INITIAL) - _a(50));
+    });
+
+    variant.tagit("Deposit and accounting works when price != 1 and slippage", async () => {
+      const { SwapStableInvestStrategy, setupVault, currA, currB, lp, _a, _i, uniswapRouterMock } =
+        await variant.fixture();
+      await uniswapRouterMock.setCurrentPrice(currA, currB, _W("0.49"));
+      await uniswapRouterMock.setCurrentPrice(currB, currA, _W("2.001"));
+      const strategy = await SwapStableInvestStrategy.deploy(currA, currB, _W("0.5")); // price = 0.5 A/B
+      const vault = await setupVault(currA, strategy);
+      await vault.connect(lp).deposit(_a(100), lp);
+      expect(await vault.totalAssets()).to.closeTo(_a("101.94"), _a("0.005")); // ((100/.49)*.5) * (1-0.001) slippage
+      expect(await currB.balanceOf(vault)).to.closeTo(_i("204.08"), _i("0.005")); // 100 / .49
+      expect(await currA.balanceOf(vault)).to.equal(_a(0));
+
+      await expect(vault.connect(lp).withdraw(_a(50), lp, lp))
+        .to.emit(vault, "Withdraw")
+        .withArgs(lp, lp, lp, _a(50), anyUint);
+      expect(await currB.balanceOf(vault)).to.closeTo(_i("104.03"), _i("0.005"));
+      expect(await currA.balanceOf(vault)).to.equal(_a(0));
+      expect(await currA.balanceOf(lp)).to.equal(_a(INITIAL) - _a(50));
+    });
+
+    variant.tagit("Checks methods can't be called directly", async () => {
       const { SwapStableInvestStrategy, currA, currB } = await variant.fixture();
       const strategy = await SwapStableInvestStrategy.deploy(currA, currB, _W(1));
 
@@ -232,7 +275,7 @@ variants.forEach((variant) => {
       );
     });
 
-    it("Checks onlyRole modifier & setSwapConfig function", async () => {
+    variant.tagit("Checks onlyRole modifier & setSwapConfig function", async () => {
       const { SwapStableInvestStrategy, currA, currB, anon, admin, swapConfig, setupVault, uniswapRouterMock } =
         await variant.fixture();
       const strategy = await SwapStableInvestStrategy.deploy(currA, currB, _W(1));
@@ -269,7 +312,7 @@ variants.forEach((variant) => {
       ).to.be.revertedWithCustomError(strategy, "NoExtraDataAllowed");
     });
 
-    it("Should return the correct swap configuration", async () => {
+    variant.tagit("Should return the correct swap configuration", async () => {
       const { SwapStableInvestStrategy, setupVault, currA, currB, admin, anon, uniswapRouterMock } =
         await variant.fixture();
       const strategy = await SwapStableInvestStrategy.deploy(currA, currB, _W(1));
@@ -285,7 +328,7 @@ variants.forEach((variant) => {
       expect(await strategy.getSwapConfig(vault, strategy)).to.deep.equal(newSwapConfig);
     });
 
-    it("setStrategy should work and disconnect strategy when authorized", async function () {
+    variant.tagit("setStrategy should work and disconnect strategy when authorized", async function () {
       const { SwapStableInvestStrategy, setupVault, currA, currB, anon, admin } = await variant.fixture();
       const strategy = await SwapStableInvestStrategy.deploy(currA, currB, _W(1));
       const vault = await setupVault(currA, strategy);
@@ -300,7 +343,7 @@ variants.forEach((variant) => {
       await expect(tx).to.emit(vault, "StrategyChanged").withArgs(strategy, dummyStrategy);
     });
 
-    it("Disconnect should fail when force false and with asset", async function () {
+    variant.tagit("Disconnect should fail when force false and with asset", async function () {
       const { SwapStableInvestStrategy, setupVault, currA, currB, lp, admin, _a } = await variant.fixture();
       const strategy = await SwapStableInvestStrategy.deploy(currA, currB, _W(1));
       const vault = await setupVault(currA, strategy);

@@ -29,7 +29,7 @@ contract SwapStableInvestStrategy is IInvestStrategy {
 
   IERC20Metadata internal immutable _asset;
   IERC20Metadata internal immutable _investAsset;
-  uint256 internal immutable _price; // Price of 1 unit of _investAsset in _asset  (in Wad, decimals difference aware)
+  uint256 internal immutable _price; // One unit of _investAsset in _asset  (in Wad), units: (asset/investAsset)
 
   event SwapConfigChanged(SwapLibrary.SwapConfig oldConfig, SwapLibrary.SwapConfig newConfig);
 
@@ -59,7 +59,7 @@ contract SwapStableInvestStrategy is IInvestStrategy {
    *
    * @param asset_ The address of the underlying token used for accounting, depositing, and withdrawing.
    * @param investAsset_ The address of the tokens hold by the strategy. Typically a rebasing yield bearing token
-   * @param price_ The conversion price from 1 unit of _investAsset to 1 unit of _asset, aware of the decimals, in wad.
+   * @param price_ Approximate amount of units of _asset required to acquire a unit of _investAsset
    */
   constructor(IERC20Metadata asset_, IERC20Metadata investAsset_, uint256 price_) {
     _asset = asset_;
@@ -109,7 +109,9 @@ contract SwapStableInvestStrategy is IInvestStrategy {
       StorageSlot.getBytesSlot(storageSlot).value,
       (SwapLibrary.SwapConfig)
     );
-    swapConfig.exactOutput(address(_investAsset), address(_asset), assets, _price);
+    uint256 price = Math.mulDiv(WAD, WAD, _price); // 1/_price - Units: investAsset/asset
+    // swapLibrary expects a price expressed in tokenOut/tokenIn - OK since price is in _investAsset/_price
+    swapConfig.exactOutput(address(_investAsset), address(_asset), assets, price);
   }
 
   function deposit(uint256 assets) external virtual override onlyDelegCall {
@@ -117,8 +119,8 @@ contract SwapStableInvestStrategy is IInvestStrategy {
       StorageSlot.getBytesSlot(storageSlot).value,
       (SwapLibrary.SwapConfig)
     );
-    uint256 price = Math.mulDiv(WAD, WAD, _price); // 1/_price
-    swapConfig.exactInput(address(_asset), address(_investAsset), assets, price);
+    // swapLibrary expects a price expressed in tokenOut/tokenIn - OK since _price is in _asset/_investAsset
+    swapConfig.exactInput(address(_asset), address(_investAsset), assets, _price);
   }
 
   function _setSwapConfig(bytes memory newSwapConfigAsBytes) internal onlyRole(SWAP_ADMIN_ROLE) {
