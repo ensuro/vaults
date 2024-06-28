@@ -173,6 +173,7 @@ const variants = [
         anon,
         guardian,
         admin,
+        swapLibrary,
       };
     },
     harvestRewards: async (vault, amount) => vault.harvestRewards(amount),
@@ -220,6 +221,7 @@ const variants = [
         anon,
         guardian,
         admin,
+        swapLibrary,
       };
     },
     harvestRewards: async (vault, amount) =>
@@ -240,7 +242,7 @@ const variants = [
     tagit: tagit,
     cToken: ADDRESSES.aUSDCv3,
     fixture: async () => {
-      const { currency, adminAddr, swapConfig, admin, lp, lp2, guardian, anon } = await setUp();
+      const { currency, adminAddr, swapConfig, admin, lp, lp2, guardian, anon, swapLibrary } = await setUp();
       const AaveV3InvestStrategy = await ethers.getContractFactory("AaveV3InvestStrategy");
       const strategy = await AaveV3InvestStrategy.deploy(ADDRESSES.USDC, ADDRESSES.AAVEv3);
       const SingleStrategyERC4626 = await ethers.getContractFactory("SingleStrategyERC4626");
@@ -270,6 +272,7 @@ const variants = [
         anon,
         guardian,
         admin,
+        swapLibrary,
       };
     },
     harvestRewards: null,
@@ -465,7 +468,9 @@ variants.forEach((variant) => {
     });
 
     variant.tagit("Checks only authorized user can change swap config [!AAVEV3Strategy]", async () => {
-      const { currency, vault, admin, anon, lp, swapConfig, strategy } = await helpers.loadFixture(variant.fixture);
+      const { currency, vault, admin, anon, lp, swapConfig, strategy, swapLibrary } = await helpers.loadFixture(
+        variant.fixture
+      );
 
       expect(await variant.getSwapConfig(vault, strategy)).to.deep.equal(swapConfig);
       await expect(vault.connect(lp).mint(_A(3000), lp)).not.to.be.reverted;
@@ -491,7 +496,7 @@ variants.forEach((variant) => {
       // Check validates new config
       await expect(
         variant.setSwapConfig(vault.connect(anon), buildUniswapConfig(0, FEETIER, ADDRESSES.UNISWAP))
-      ).to.be.revertedWith("SwapLibrary: maxSlippage cannot be zero");
+      ).to.be.revertedWithCustomError(swapLibrary, "MaxSlippageCannotBeZero");
 
       const newSwapConfig = buildUniswapConfig(_W("0.05"), FEETIER, ADDRESSES.UNISWAP);
 
