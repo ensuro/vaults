@@ -39,6 +39,10 @@ contract PermissionedERC4626 is AccessControlUpgradeable, UUPSUpgradeable, ERC46
   // solhint-disable-next-line no-empty-blocks
   function _authorizeUpgrade(address newImpl) internal view override onlyRole(GUARDIAN_ROLE) {}
 
+  function setRoleAdmin(bytes32 role, bytes32 adminRole) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    _setRoleAdmin(role, adminRole);
+  }
+
   /**
    * @dev See {IERC4626-maxDeposit}.
    */

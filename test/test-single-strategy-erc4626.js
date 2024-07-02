@@ -45,6 +45,7 @@ async function setUp() {
   await currency.connect(lp2).approve(vault, MaxUint256);
   await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
   await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp2);
+  await vault.connect(admin).grantRole(getRole("GUARDIAN_ROLE"), guardian);
 
   return {
     currency,
@@ -201,5 +202,35 @@ describe("SingleStrategyERC4626 contract tests", function () {
     await expect(
       vault.connect(admin).setStrategy(differentStrategy, encodeDummyStorage({}), false)
     ).to.be.revertedWithCustomError(SingleStrategyERC4626, "InvalidStrategyAsset");
+  });
+
+  it("Checks only GUARDIAN_ROLE can upgrade", async () => {
+    const { vault, admin, guardian, SingleStrategyERC4626 } = await helpers.loadFixture(setUp);
+    const newImpl = await SingleStrategyERC4626.deploy();
+
+    await expect(vault.connect(admin).upgradeTo(newImpl)).to.be.revertedWith(
+      accessControlMessage(admin, null, "GUARDIAN_ROLE")
+    );
+    await expect(vault.connect(guardian).upgradeTo(newImpl)).to.emit(vault, "Upgraded");
+  });
+
+  it("Checks only DEFAULT_ADMIN_ROLE can setRoleAdmin, then others can set specific roles", async () => {
+    const { vault, admin, guardian } = await helpers.loadFixture(setUp);
+
+    await expect(vault.connect(guardian).setRoleAdmin(getRole("LP_ROLE"), getRole("LP_ROLE_ADMIN"))).to.be.revertedWith(
+      accessControlMessage(guardian, null, "DEFAULT_ADMIN_ROLE")
+    );
+
+    await expect(vault.connect(admin).setRoleAdmin(getRole("LP_ROLE"), getRole("LP_ROLE_ADMIN")))
+      .to.emit(vault, "RoleAdminChanged")
+      .withArgs(getRole("LP_ROLE"), getRole("DEFAULT_ADMIN_ROLE"), getRole("LP_ROLE_ADMIN"));
+
+    await expect(vault.connect(admin).grantRole(getRole("LP_ROLE"), guardian)).to.be.revertedWith(
+      accessControlMessage(admin, null, "LP_ROLE_ADMIN")
+    );
+
+    await vault.connect(admin).grantRole(getRole("LP_ROLE_ADMIN"), guardian);
+
+    await expect(vault.connect(guardian).grantRole(getRole("LP_ROLE"), guardian)).to.emit(vault, "RoleGranted");
   });
 });
