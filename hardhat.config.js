@@ -20,6 +20,6 @@ module.exports = {
     disambiguatePaths: false,
   },
   dependencyCompiler: {
-    paths: ["@ensuro/core/contracts/mocks/TestCurrency.sol"],
+    paths: ["@ensuro/core/contracts/mocks/TestCurrency.sol", "@ensuro/swaplibrary/contracts/mocks/SwapRouterMock.sol"],
   },
 };
