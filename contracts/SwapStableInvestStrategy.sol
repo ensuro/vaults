@@ -95,16 +95,20 @@ contract SwapStableInvestStrategy is IInvestStrategy {
     return address(_investAsset);
   }
 
-  function totalAssets(address contract_) public view virtual override returns (uint256 assets) {
+  function _convertAssets(uint256 investAssets, address contract_) internal view virtual returns (uint256 assets) {
     return
       Math.mulDiv(
-        Math.mulDiv(_investAsset.balanceOf(contract_) * _toWadFactor(_investAsset), _price, WAD),
+        Math.mulDiv(investAssets * _toWadFactor(_investAsset), _price, WAD),
         WAD - _getSwapConfig(contract_).maxSlippage,
         WAD
       ) / _toWadFactor(_asset);
   }
 
-  function withdraw(uint256 assets) external virtual override onlyDelegCall {
+  function totalAssets(address contract_) public view virtual override returns (uint256 assets) {
+    return _convertAssets(_investAsset.balanceOf(contract_), contract_);
+  }
+
+  function withdraw(uint256 assets) public virtual override onlyDelegCall {
     SwapLibrary.SwapConfig memory swapConfig = abi.decode(
       StorageSlot.getBytesSlot(storageSlot).value,
       (SwapLibrary.SwapConfig)
@@ -114,7 +118,7 @@ contract SwapStableInvestStrategy is IInvestStrategy {
     swapConfig.exactOutput(address(_investAsset), address(_asset), assets, price);
   }
 
-  function deposit(uint256 assets) external virtual override onlyDelegCall {
+  function deposit(uint256 assets) public virtual override onlyDelegCall {
     SwapLibrary.SwapConfig memory swapConfig = abi.decode(
       StorageSlot.getBytesSlot(storageSlot).value,
       (SwapLibrary.SwapConfig)
