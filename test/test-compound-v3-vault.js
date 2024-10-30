@@ -140,6 +140,10 @@ const CompoundV3StrategyMethods = {
   setSwapConfig: 1,
 };
 
+const SwapStableAaveV3InvestStrategyMethods = {
+  setSwapConfig: 0,
+};
+
 const variants = [
   {
     name: "CompoundV3ERC4626",
@@ -283,6 +287,53 @@ const variants = [
     getSwapConfig: null,
     setSwapConfig: null,
   },
+  {
+    name: "SwapStableAAVEV3Strategy",
+    tagit: tagit,
+    fixture: async () => {
+      const { currency, swapLibrary, adminAddr, swapConfig, admin, lp, lp2, guardian, anon } = await setUp();
+      const SwapStableAaveV3InvestStrategy = await ethers.getContractFactory("SwapStableAaveV3InvestStrategy", {
+        libraries: { SwapLibrary: await ethers.resolveAddress(swapLibrary) },
+      });
+      const strategy = await SwapStableAaveV3InvestStrategy.deploy(ADDRESSES.USDC, ADDRESSES.aUSDCv3, _W(1), ADDRESSES.AAVEv3);
+      
+      const SingleStrategyERC4626 = await ethers.getContractFactory("SingleStrategyERC4626");
+      const vault = await hre.upgrades.deployProxy(
+        SingleStrategyERC4626,
+        [NAME, SYMB, adminAddr, ADDRESSES.USDC, await ethers.resolveAddress(strategy), encodeSwapConfig(swapConfig)],
+        {
+          kind: "uups",
+          unsafeAllow: ["delegatecall"],
+        }
+      );
+
+      await currency.connect(lp).approve(vault, MaxUint256);
+      await currency.connect(lp2).approve(vault, MaxUint256);
+      await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
+      await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp2);
+
+      return {
+        currency,
+        SingleStrategyERC4626,
+        SwapStableAaveV3InvestStrategy,
+        swapConfig,
+        vault,
+        strategy,
+        adminAddr,
+        lp,
+        lp2,
+        anon,
+        guardian,
+        admin,
+        swapLibrary,
+      };
+    },
+    harvestRewards: null,
+    accessControlCheck: async (action, user, role, contract) =>
+      expect(action).to.be.revertedWithCustomError(contract, "AccessControlUnauthorizedAccount").withArgs(user, getRole(role)),
+    getSwapConfig: async (vault, strategy) => strategy.getSwapConfig(vault),
+    setSwapConfig: async (vault, swapConfig) => vault.forwardToStrategy(SwapStableAaveV3InvestStrategyMethods.setSwapConfig, encodeSwapConfig(swapConfig)),
+  }
 ];
 
 variants.forEach((variant) => {
