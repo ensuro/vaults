@@ -295,8 +295,13 @@ const variants = [
       const SwapStableAaveV3InvestStrategy = await ethers.getContractFactory("SwapStableAaveV3InvestStrategy", {
         libraries: { SwapLibrary: await ethers.resolveAddress(swapLibrary) },
       });
-      const strategy = await SwapStableAaveV3InvestStrategy.deploy(ADDRESSES.USDC, ADDRESSES.aUSDCv3, _W(1), ADDRESSES.AAVEv3);
-      
+      const strategy = await SwapStableAaveV3InvestStrategy.deploy(
+        ADDRESSES.USDC,
+        ADDRESSES.aUSDCv3,
+        _W(1),
+        ADDRESSES.AAVEv3
+      );
+
       const SingleStrategyERC4626 = await ethers.getContractFactory("SingleStrategyERC4626");
       const vault = await hre.upgrades.deployProxy(
         SingleStrategyERC4626,
@@ -330,10 +335,13 @@ const variants = [
     },
     harvestRewards: null,
     accessControlCheck: async (action, user, role, contract) =>
-      expect(action).to.be.revertedWithCustomError(contract, "AccessControlUnauthorizedAccount").withArgs(user, getRole(role)),
+      expect(action)
+        .to.be.revertedWithCustomError(contract, "AccessControlUnauthorizedAccount")
+        .withArgs(user, getRole(role)),
     getSwapConfig: async (vault, strategy) => strategy.getSwapConfig(vault),
-    setSwapConfig: async (vault, swapConfig) => vault.forwardToStrategy(SwapStableAaveV3InvestStrategyMethods.setSwapConfig, encodeSwapConfig(swapConfig)),
-  }
+    setSwapConfig: async (vault, swapConfig) =>
+      vault.forwardToStrategy(SwapStableAaveV3InvestStrategyMethods.setSwapConfig, encodeSwapConfig(swapConfig)),
+  },
 ];
 
 variants.forEach((variant) => {
