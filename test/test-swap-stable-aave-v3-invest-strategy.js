@@ -130,7 +130,7 @@ variants.forEach((variant) => {
         expect(await vault.symbol()).to.equal(SYMB);
         expect(await vault.strategy()).to.equal(strategy);
         expect(await vault.asset()).to.equal(currA);
-        
+        expect(await vault.totalAssets()).to.equal(0);
         expect(await strategy.asset(vault)).to.equal(currA);
         expect(await strategy.investAsset(vault)).to.equal(currB);
       });
@@ -139,7 +139,7 @@ variants.forEach((variant) => {
         const { SwapStableAaveV3InvestStrategy, setupVault, currA, currB, lp, _a, _i } = await variant.fixture();
         const strategy = await SwapStableAaveV3InvestStrategy.deploy(currA, currB, _W(1), ADDRESSES.AAVEv3);
         const vault = await setupVault(currA, strategy);
-        
+        await vault.connect(lp).deposit(_a(100), lp);
         
         expect(await currB.balanceOf(vault)).to.equal(_i(100));
         expect(await currA.balanceOf(vault)).to.equal(_a(0));
