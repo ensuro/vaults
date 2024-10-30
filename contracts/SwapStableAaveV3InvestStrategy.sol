@@ -5,13 +5,6 @@ import {IPool} from "./dependencies/aave-v3/IPool.sol";
 import {DataTypes} from "./dependencies/aave-v3/DataTypes.sol";
 import {ReserveConfiguration} from "./dependencies/aave-v3/ReserveConfiguration.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
-import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
-import {SwapLibrary} from "@ensuro/swaplibrary/contracts/SwapLibrary.sol";
-import {IInvestStrategy} from "./interfaces/IInvestStrategy.sol";
-import {StorageSlot} from "@openzeppelin/contracts/utils/StorageSlot.sol";
-import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
-import {IExposeStorage} from "./interfaces/IExposeStorage.sol";
-import {InvestStrategyClient} from "./InvestStrategyClient.sol";
 import {SwapStableInvestStrategy} from "./SwapStableInvestStrategy.sol";
 
 /**
