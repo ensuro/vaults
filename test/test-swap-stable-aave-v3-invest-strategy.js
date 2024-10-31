@@ -2,7 +2,7 @@ const { expect } = require("chai");
 const { amountFunction, _W, getRole, getTransactionEvent } = require("@ensuro/core/js/utils");
 const { buildUniswapConfig } = require("@ensuro/swaplibrary/js/utils");
 const { encodeSwapConfig, encodeDummyStorage, tagit } = require("./utils");
-const { initForkCurrency } = require("@ensuro/core/js/test-utils");
+const { initForkCurrency, setupChain } = require("@ensuro/core/js/test-utils");
 const { anyUint } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
@@ -17,18 +17,18 @@ const NAME = "Single Strategy Vault";
 const SYMB = "SSV";
 const SLIPPAGE = _W("0.00015"); // 0.015%
 const FEETIER = 100; // 0.01%
+const TEST_BLOCK = 63671575;
 
 const ADDRESSES = {
   // polygon mainnet addresses
-  UNISWAP: "0xD36ec33c8bed5a9F7B6630855f1533455b98a418",
+  UNISWAP: "0xE592427A0AEce92De3Edee1F18E0157C05861564",
   USDC: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
   USDCWhale: "0x4d97dcd97ec945f40cf65f87097ace5ea0476045",
-  cUSDCv3: "0xF25212E676D1F7F89Cd72fFEe66158f541246445",
-  REWARDS: "0x45939657d1CA34A8FA39A924B71D28Fe8431e581",
-  COMP: "0x8505b9d2254A7Ae468c0E9dd10Ccea3A837aef5c",
-  cUSDCv3_GUARDIAN: "0x8Ab717CAC3CbC4934E63825B88442F5810aAF6e5",
+  USDC_NATIVE: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+  USDCNativeWhale: "0xD36ec33c8bed5a9F7B6630855f1533455b98a418",
   AAVEv3: "0x794a61358D6845594F94dc1DB02A252b5b4814aD",
   aUSDCv3: "0x625E7708f30cA75bfd92586e17077590C60eb4cD",
+  aUSDCNATIVEv3: "0xA4D94019934D8333Ef880ABFFbF2FDd611C762BD",
   AAVEPoolConfigurator: "0x8145eddDf43f50276641b55bd3AD95944510021E",
   AAVEPoolAdmin: "0xDf7d0e6454DB638881302729F5ba99936EaAB233",
 };
@@ -41,7 +41,8 @@ async function setUp() {
   const [, lp, lp2, anon, guardian, admin] = await ethers.getSigners();
 
   const USDC = await initForkCurrency(ADDRESSES.USDC, ADDRESSES.USDCWhale, [lp, lp2], [_A(INITIAL), _A(INITIAL)]);
-  const USDCAddress = await ethers.resolveAddress(USDC);
+  const USDC_NATIVE = await ethers.getContractAt("IERC20Metadata", ADDRESSES.USDC_NATIVE);
+  const aToken = await ethers.getContractAt("IERC20Metadata", ADDRESSES.aUSDCNATIVEv3);
 
   const adminAddr = await ethers.resolveAddress(admin);
 
@@ -87,7 +88,9 @@ async function setUp() {
   }
 
   return {
-    USDC: USDCAddress,
+    USDC,
+    USDC_NATIVE,
+    aToken,
     SingleStrategyERC4626,
     SwapStableAaveV3InvestStrategy,
     adminAddr,
@@ -110,7 +113,8 @@ function makeFixture(asset, investAsset, assetFn, investFn) {
       _a: assetFn,
       _i: investFn,
       currA: ret.USDC,
-      currB: ADDRESSES.aUSDCv3,
+      currB: ret.USDC_NATIVE,
+      aToken: ret.aToken,
     };
   };
 }
@@ -125,6 +129,10 @@ const variants = [
 
 variants.forEach((variant) => {
   describe(`SwapStableAaveV3InvestStrategy contract tests ${variant.name}`, function () {
+    before(async () => {
+      await setupChain(TEST_BLOCK);
+    });
+
     variant.tagit("Initializes the vault correctly with AAVE", async () => {
       const { SwapStableAaveV3InvestStrategy, setupVault, currA, currB } = await variant.fixture();
 
@@ -142,12 +150,12 @@ variants.forEach((variant) => {
     });
 
     variant.tagit("Deposit and accounting works", async () => {
-      const { SwapStableAaveV3InvestStrategy, setupVault, currA, currB, lp, _a, _i } = await variant.fixture();
+      const { SwapStableAaveV3InvestStrategy, setupVault, currA, currB, aToken, lp, _a, _i } = await variant.fixture();
       const strategy = await SwapStableAaveV3InvestStrategy.deploy(currA, currB, _W(1), ADDRESSES.AAVEv3);
       const vault = await setupVault(currA, strategy);
       await vault.connect(lp).deposit(_a(100), lp);
 
-      expect(await currB.balanceOf(vault)).to.equal(_i(100));
+      expect(await aToken.balanceOf(vault)).to.closeTo(_i(100), _i("0.001"));
       expect(await currA.balanceOf(vault)).to.equal(_a(0));
     });
   });
