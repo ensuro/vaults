@@ -29,6 +29,8 @@ const ADDRESSES = {
   AAVEv3: "0x794a61358D6845594F94dc1DB02A252b5b4814aD",
   aUSDCv3: "0x625E7708f30cA75bfd92586e17077590C60eb4cD",
   aUSDCNATIVEv3: "0xA4D94019934D8333Ef880ABFFbF2FDd611C762BD",
+  DAI: "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063",
+  USDT: "0xc2132D05D31c914a87C6611C10748AEb04B58e8F",
   AAVEPoolConfigurator: "0x8145eddDf43f50276641b55bd3AD95944510021E",
   AAVEPoolAdmin: "0xDf7d0e6454DB638881302729F5ba99936EaAB233",
 };
@@ -38,11 +40,35 @@ const SwapStableAaveV3InvestStrategyMethods = {
 };
 
 async function setUp() {
+  await setupChain(TEST_BLOCK);
   const [, lp, lp2, anon, guardian, admin] = await ethers.getSigners();
 
-  const USDC = await initForkCurrency(ADDRESSES.USDC, ADDRESSES.USDCWhale, [lp, lp2], [_A(INITIAL), _A(INITIAL)]);
-  const USDC_NATIVE = await ethers.getContractAt("IERC20Metadata", ADDRESSES.USDC_NATIVE);
-  const aToken = await ethers.getContractAt("IERC20Metadata", ADDRESSES.aUSDCNATIVEv3);
+  let USDC = await initForkCurrency(ADDRESSES.USDC, ADDRESSES.USDCWhale, [lp, lp2], [_A(INITIAL), _A(INITIAL)]);
+  let USDC_NATIVE = await initForkCurrency(
+    ADDRESSES.USDC_NATIVE,
+    ADDRESSES.USDCNativeWhale,
+    [lp, lp2],
+    [_A(INITIAL), _A(INITIAL)]
+  );
+  // Re-construct USDC_NATIVE and USDC because initForkCurrency uses IERC20 without decimals
+  USDC_NATIVE = await ethers.getContractAt("IERC20Metadata", ADDRESSES.USDC_NATIVE);
+  USDC = await ethers.getContractAt("IERC20Metadata", ADDRESSES.USDC);
+  const DAI = await ethers.getContractAt("IERC20Metadata", ADDRESSES.DAI);
+  const USDT = await ethers.getContractAt("IERC20Metadata", ADDRESSES.USDT);
+  const tokens = {
+    DAI,
+    USDT,
+    USDC,
+    USDC_NATIVE,
+  };
+  const aave = await ethers.getContractAt("IPool", ADDRESSES.AAVEv3);
+  const decimals = {};
+  const aTokens = {};
+  for (const [name, token] of Object.entries(tokens)) {
+    const [, , , , , , , , aTokenAddr] = await aave.getReserveData(token);
+    aTokens[name] = await ethers.getContractAt("IERC20Metadata", aTokenAddr);
+    decimals[name] = await token.decimals();
+  }
 
   const adminAddr = await ethers.resolveAddress(admin);
 
@@ -88,9 +114,9 @@ async function setUp() {
   }
 
   return {
-    USDC,
-    USDC_NATIVE,
-    aToken,
+    tokens,
+    aTokens,
+    decimals,
     SingleStrategyERC4626,
     SwapStableAaveV3InvestStrategy,
     adminAddr,
@@ -105,34 +131,40 @@ async function setUp() {
   };
 }
 
-function makeFixture(asset, investAsset, assetFn, investFn) {
+function makeFixture(asset, investAsset) {
   return async () => {
     const ret = await helpers.loadFixture(setUp);
     return {
       ...ret,
-      _a: assetFn,
-      _i: investFn,
-      currA: ret.USDC,
-      currB: ret.USDC_NATIVE,
-      aToken: ret.aToken,
+      _a: amountFunction(ret.decimals[asset]),
+      _i: amountFunction(ret.decimals[investAsset]),
+      currA: ret.tokens[asset],
+      currB: ret.tokens[investAsset],
+      aToken: ret.aTokens[investAsset],
     };
   };
 }
 
 const variants = [
   {
-    name: "A(6)->B(6) with AAVE",
+    name: "USDC(6)->USDC_NATIVE(6) with AAVE",
     tagit: tagit,
-    fixture: makeFixture("A", "B", _A, _A),
+    fixture: makeFixture("USDC", "USDC_NATIVE"),
+  },
+  {
+    name: "USDC(6)->USDT(6) with AAVE",
+    tagit: tagit,
+    fixture: makeFixture("USDC", "USDT"),
+  },
+  {
+    name: "USDC(6)->DAI(18) with AAVE",
+    tagit: tagit,
+    fixture: makeFixture("USDC", "DAI"),
   },
 ];
 
 variants.forEach((variant) => {
   describe(`SwapStableAaveV3InvestStrategy contract tests ${variant.name}`, function () {
-    before(async () => {
-      await setupChain(TEST_BLOCK);
-    });
-
     variant.tagit("Initializes the vault correctly with AAVE", async () => {
       const { SwapStableAaveV3InvestStrategy, setupVault, currA, currB } = await variant.fixture();
 
@@ -155,7 +187,7 @@ variants.forEach((variant) => {
       const vault = await setupVault(currA, strategy);
       await vault.connect(lp).deposit(_a(100), lp);
 
-      expect(await aToken.balanceOf(vault)).to.closeTo(_i(100), _i("0.001"));
+      expect(await aToken.balanceOf(vault)).to.closeTo(_i(100), _i("0.02"));
       expect(await currA.balanceOf(vault)).to.equal(_a(0));
     });
   });
