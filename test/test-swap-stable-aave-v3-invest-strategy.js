@@ -15,7 +15,7 @@ const _A = amountFunction(CURRENCY_DECIMALS);
 const INITIAL = 10000;
 const NAME = "Single Strategy Vault";
 const SYMB = "SSV";
-const SLIPPAGE = _W("0.00015"); // 0.015%
+const SLIPPAGE = _W("0.0005"); // 0.015%
 const FEETIER = 100; // 0.01%
 const TEST_BLOCK = 63671575;
 
@@ -35,9 +35,56 @@ const ADDRESSES = {
   AAVEPoolAdmin: "0xDf7d0e6454DB638881302729F5ba99936EaAB233",
 };
 
-const SwapStableAaveV3InvestStrategyMethods = {
-  setSwapConfig: 0,
-};
+const PoolConfiguratorABI = [
+  {
+    inputs: [{ internalType: "bool", name: "paused", type: "bool" }],
+    name: "setPoolPause",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [
+      { internalType: "address", name: "asset", type: "address" },
+      { internalType: "bool", name: "active", type: "bool" },
+    ],
+    name: "setReserveActive",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [
+      { internalType: "address", name: "asset", type: "address" },
+      { internalType: "bool", name: "freeze", type: "bool" },
+    ],
+    name: "setReserveFreeze",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [
+      { internalType: "address", name: "asset", type: "address" },
+      { internalType: "bool", name: "paused", type: "bool" },
+    ],
+    name: "setReservePause",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [
+      { internalType: "address", name: "asset", type: "address" },
+      { internalType: "uint256", name: "newSupplyCap", type: "uint256" },
+    ],
+    name: "setSupplyCap",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+];
+
 
 async function setUp() {
   await setupChain(TEST_BLOCK);
@@ -190,5 +237,102 @@ variants.forEach((variant) => {
       expect(await aToken.balanceOf(vault)).to.closeTo(_i(100), _i("0.02"));
       expect(await currA.balanceOf(vault)).to.equal(_a(0));
     });
+
+    variant.tagit("Withdraw works with original slippage and validates balances", async () => {
+      const { SwapStableAaveV3InvestStrategy, setupVault, currA, currB, aToken, lp, _a, _i } = await variant.fixture();
+      const strategy = await SwapStableAaveV3InvestStrategy.deploy(currA, currB, _W(1), ADDRESSES.AAVEv3);
+      const vault = await setupVault(currA, strategy);
+      const initialLpBalance = await currA.balanceOf(lp)
+      await vault.connect(lp).deposit(_a(100), lp);
+
+      const initialATokenBalance = await aToken.balanceOf(vault);
+      expect(initialATokenBalance).to.be.closeTo(_i(100), _i("0.02"));
+      expect(await currA.balanceOf(lp)).to.equal(initialLpBalance - _a(100));
+
+      await expect(vault.connect(lp).withdraw(_a(50), lp, lp))
+        .to.emit(vault, "Withdraw")
+        .withArgs(lp, lp, lp, _a(50), anyUint);
+      expect(await aToken.balanceOf(vault)).to.be.closeTo(initialATokenBalance - _i(50), _i("0.02"));
+      expect(await currA.balanceOf(lp)).to.equal(initialLpBalance - _a(50));
+
+    });
+
+    variant.tagit("maxWithdraw returns correct values initially, afert deposit & withdraw", async () => {
+      const { SwapStableAaveV3InvestStrategy, setupVault, currA, currB, aToken, lp, _a, _i } = await variant.fixture();
+      const strategy = await SwapStableAaveV3InvestStrategy.deploy(currA, currB, _W(1), ADDRESSES.AAVEv3);
+      const vault = await setupVault(currA, strategy);
+      
+      const maxWithdrawInitial = await strategy.maxWithdraw(vault);
+      expect(maxWithdrawInitial).to.equal(0);
+
+      await vault.connect(lp).deposit(_a(100), lp);
+      const initialATokenBalance = await aToken.balanceOf(vault);
+      expect(initialATokenBalance).to.be.closeTo(_i(100), _i("0.02"));
+      
+      const maxWithdrawAfterDeposit = await strategy.maxWithdraw(vault);
+      expect(maxWithdrawAfterDeposit).to.equal(await strategy.totalAssets(vault));
+
+      await expect(vault.connect(lp).withdraw(_a(50), lp, lp))
+        .to.emit(vault, "Withdraw")
+        .withArgs(lp, lp, lp, _a(50), anyUint);
+      const maxWithdrawAfterWithdraw = await strategy.maxWithdraw(vault);
+      expect(maxWithdrawAfterWithdraw).to.equal(await strategy.totalAssets(vault));
+    
+    });
+    
+
+    variant.tagit("Checks methods can't be called directly", async () => {
+      const { SwapStableAaveV3InvestStrategy, currA, currB } = await variant.fixture();
+      const strategy = await SwapStableAaveV3InvestStrategy.deploy(currA, currB, _W(1), ADDRESSES.AAVEv3);
+    
+      await expect(strategy.disconnect(false))
+        .to.be.revertedWithCustomError(strategy, "CanBeCalledOnlyThroughDelegateCall");
+    
+      await expect(strategy.deposit(123))
+        .to.be.revertedWithCustomError(strategy, "CanBeCalledOnlyThroughDelegateCall");
+    
+      await expect(strategy.withdraw(123))
+        .to.be.revertedWithCustomError(strategy, "CanBeCalledOnlyThroughDelegateCall");
+    
+      await expect(strategy.forwardEntryPoint(1, ethers.toUtf8Bytes("")))
+        .to.be.revertedWithCustomError(strategy, "CanBeCalledOnlyThroughDelegateCall");
+    });
+    
+    variant.tagit("Should disconnect when strategy change & when authorized", async function () {
+      const { SwapStableAaveV3InvestStrategy, setupVault, currA, currB, anon, admin } = await variant.fixture();
+      const strategy = await SwapStableAaveV3InvestStrategy.deploy(currA, currB, _W(1), ADDRESSES.AAVEv3);
+      const vault = await setupVault(currA, strategy);
+
+      const DummyInvestStrategy = await ethers.getContractFactory("DummyInvestStrategy");
+      const dummyStrategy = await DummyInvestStrategy.deploy(currA);
+
+      await vault.connect(admin).grantRole(getRole("SET_STRATEGY_ROLE"), anon);
+
+      const tx = await vault.connect(anon).setStrategy(dummyStrategy, encodeDummyStorage({}), true);
+
+      await expect(tx).to.emit(vault, "StrategyChanged").withArgs(strategy, dummyStrategy);
+    });
+
+    variant.tagit("Disconnect should fail when force is false and there are assets AAVE", async function () {
+      const { SwapStableAaveV3InvestStrategy, setupVault, currA, currB, lp, admin, _a } = await variant.fixture();
+      const strategy = await SwapStableAaveV3InvestStrategy.deploy(currA, currB, _W(1), ADDRESSES.AAVEv3);
+      const vault = await setupVault(currA, strategy);
+
+      const DummyInvestStrategy = await ethers.getContractFactory("DummyInvestStrategy");
+      const dummyStrategy = await DummyInvestStrategy.deploy(currA);
+      
+      await vault.connect(admin).grantRole(getRole("SET_STRATEGY_ROLE"), lp);
+      await expect(vault.connect(lp).setStrategy(dummyStrategy, encodeDummyStorage({}), false)).to.be.revertedWith(
+        "AmountOut cannot be zero"
+      );
+      await vault.connect(lp).deposit(_a(100), lp);
+
+      await expect(
+        vault.connect(lp).setStrategy(dummyStrategy, encodeDummyStorage({}), false)
+      ).to.be.revertedWithCustomError(strategy, "CannotDisconnectWithAssets");
+    });
+    
+    // Maybe do a test doing a complete process, but withdraw test could be this one
+
   });
 });
