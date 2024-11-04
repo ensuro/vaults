@@ -1,5 +1,5 @@
 const { expect } = require("chai");
-const { amountFunction, _W, getRole, getTransactionEvent } = require("@ensuro/core/js/utils");
+const { amountFunction, _W, getRole } = require("@ensuro/core/js/utils");
 const { buildUniswapConfig } = require("@ensuro/swaplibrary/js/utils");
 const { encodeSwapConfig, encodeDummyStorage, tagit } = require("./utils");
 const { initForkCurrency, setupChain } = require("@ensuro/core/js/test-utils");
@@ -35,55 +35,6 @@ const ADDRESSES = {
   AAVEPoolAdmin: "0xDf7d0e6454DB638881302729F5ba99936EaAB233",
 };
 
-const PoolConfiguratorABI = [
-  {
-    inputs: [{ internalType: "bool", name: "paused", type: "bool" }],
-    name: "setPoolPause",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-  {
-    inputs: [
-      { internalType: "address", name: "asset", type: "address" },
-      { internalType: "bool", name: "active", type: "bool" },
-    ],
-    name: "setReserveActive",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-  {
-    inputs: [
-      { internalType: "address", name: "asset", type: "address" },
-      { internalType: "bool", name: "freeze", type: "bool" },
-    ],
-    name: "setReserveFreeze",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-  {
-    inputs: [
-      { internalType: "address", name: "asset", type: "address" },
-      { internalType: "bool", name: "paused", type: "bool" },
-    ],
-    name: "setReservePause",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-  {
-    inputs: [
-      { internalType: "address", name: "asset", type: "address" },
-      { internalType: "uint256", name: "newSupplyCap", type: "uint256" },
-    ],
-    name: "setSupplyCap",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-];
 
 
 async function setUp() {
