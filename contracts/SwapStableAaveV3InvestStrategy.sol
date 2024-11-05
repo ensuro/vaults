@@ -19,6 +19,8 @@ import {SwapStableInvestStrategy} from "./SwapStableInvestStrategy.sol";
 contract SwapStableAaveV3InvestStrategy is SwapStableInvestStrategy {
   using ReserveConfiguration for DataTypes.ReserveConfigurationMap;
 
+  event ResupplyFailed(uint256 assets);
+
   IPool internal immutable _aave;
   /**
    * @dev Constructor of the strategy
@@ -68,17 +70,24 @@ contract SwapStableAaveV3InvestStrategy is SwapStableInvestStrategy {
     // Withdraw everything then deposit the remainder
     _aave.withdraw(address(_investAsset), type(uint256).max, address(this));
     super.withdraw(assets);
-    // Supply the remaining balance again to AAVE
-    _supply(_investAsset.balanceOf(address(this)));
+    // Supply the remaining balance again to AAVE - Ignore errors to avoid reverting in case this deposit fails
+    _supply(_investAsset.balanceOf(address(this)), true);
   }
 
   function deposit(uint256 assets) public virtual override onlyDelegCall {
     super.deposit(assets);
-    _supply(_investAsset.balanceOf(address(this)));
+    _supply(_investAsset.balanceOf(address(this)), false);
   }
 
-  function _supply(uint256 assets) internal {
+  function _supply(uint256 assets, bool failSafe) internal {
+    if (assets == 0) return;
     _investAsset.approve(address(_aave), assets);
-    _aave.supply(address(_investAsset), assets, address(this), 0);
+    if (failSafe) {
+      try _aave.supply(address(_investAsset), assets, address(this), 0) {
+        return;
+      } catch {
+        emit ResupplyFailed(assets);
+      }
+    } else _aave.supply(address(_investAsset), assets, address(this), 0);
   }
 }

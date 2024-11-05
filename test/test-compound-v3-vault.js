@@ -246,6 +246,7 @@ const variants = [
     name: "AAVEV3Strategy",
     tagit: tagit,
     cToken: ADDRESSES.aUSDCv3,
+    supplyToken: ADDRESSES.USDC,
     fixture: async () => {
       const { currency, adminAddr, swapConfig, admin, lp, lp2, guardian, anon, swapLibrary } = await setUp();
       const AaveV3InvestStrategy = await ethers.getContractFactory("AaveV3InvestStrategy");
@@ -291,6 +292,7 @@ const variants = [
   {
     name: "SwapStableAAVEV3Strategy",
     tagit: tagit,
+    supplyToken: ADDRESSES.USDC_NATIVE,
     fixture: async () => {
       const { currency, swapLibrary, adminAddr, admin, lp, lp2, guardian, anon } = await setUp();
       // Use an specific swapConfig, not the same used for COMP
@@ -645,7 +647,7 @@ variants.forEach((variant) => {
       }
     );
 
-    variant.tagit("Checks can't deposit or withdraw when AAVE is paused [AAVEV3Strategy]", async () => {
+    variant.tagit("Checks can't operate when AAVE is paused [AAVEV3Strategy] [SwapStableAAVEV3Strategy]", async () => {
       const { vault, lp, currency } = await helpers.loadFixture(variant.fixture);
 
       await helpers.impersonateAccount(ADDRESSES.AAVEPoolAdmin);
@@ -658,7 +660,7 @@ variants.forEach((variant) => {
       expect(await vault.maxDeposit(lp)).to.equal(MaxUint256);
 
       // If I pause supply, maxMint / maxDeposit becomes 0 and can't deposit or mint
-      await aaveConfig.connect(aaveAdmin).setReservePause(ADDRESSES.USDC, true);
+      await aaveConfig.connect(aaveAdmin).setReservePause(variant.supplyToken, true);
 
       expect(await vault.maxMint(lp)).to.equal(0);
       expect(await vault.maxDeposit(lp)).to.equal(0);
@@ -666,22 +668,22 @@ variants.forEach((variant) => {
       await expect(vault.connect(lp).deposit(_A(3000), lp)).to.be.revertedWith("ERC4626: deposit more than max");
 
       // Same happens if I set the reserve frozen (can't set as inactive because it has funds)
-      await aaveConfig.connect(aaveAdmin).setReservePause(ADDRESSES.USDC, false);
-      await aaveConfig.connect(aaveAdmin).setReserveFreeze(ADDRESSES.USDC, true);
+      await aaveConfig.connect(aaveAdmin).setReservePause(variant.supplyToken, false);
+      await aaveConfig.connect(aaveAdmin).setReserveFreeze(variant.supplyToken, true);
       expect(await vault.maxMint(lp)).to.equal(0);
       expect(await vault.maxDeposit(lp)).to.equal(0);
 
       // Then I unpause deposit
-      await aaveConfig.connect(aaveAdmin).setReserveFreeze(ADDRESSES.USDC, false);
+      await aaveConfig.connect(aaveAdmin).setReserveFreeze(variant.supplyToken, false);
 
       await expect(vault.connect(lp).mint(_A(3000), lp)).not.to.be.reverted;
 
-      expect(await vault.totalAssets()).to.closeTo(_A(3000), MCENT);
+      expect(await vault.totalAssets()).to.closeTo(_A(3000), _A(10));
       expect(await vault.maxRedeem(lp)).to.closeTo(_A(3000), MCENT);
-      expect(await vault.maxWithdraw(lp)).to.closeTo(_A(3000), MCENT);
+      expect(await vault.maxWithdraw(lp)).to.closeTo(_A(3000), _A(10));
 
       // If I pause withdraw, maxRedeem / maxWithdraw becomes 0 and can't withdraw or redeem
-      await aaveConfig.connect(aaveAdmin).setReservePause(ADDRESSES.USDC, true);
+      await aaveConfig.connect(aaveAdmin).setReservePause(variant.supplyToken, true);
 
       expect(await vault.maxRedeem(lp)).to.equal(0);
       expect(await vault.maxWithdraw(lp)).to.equal(0);
@@ -690,15 +692,17 @@ variants.forEach((variant) => {
       await expect(vault.connect(lp).withdraw(_A(1000), lp, lp)).to.be.revertedWith("ERC4626: withdraw more than max");
 
       // Then I unpause and I freeze the reserve. Withdraw should work and deposit doesn't
-      await aaveConfig.connect(aaveAdmin).setReservePause(ADDRESSES.USDC, false);
-      await aaveConfig.connect(aaveAdmin).setReserveFreeze(ADDRESSES.USDC, true);
-      expect(await vault.maxRedeem(lp)).not.to.equal(0);
+      await aaveConfig.connect(aaveAdmin).setReservePause(variant.supplyToken, false);
+      await aaveConfig.connect(aaveAdmin).setReserveFreeze(variant.supplyToken, true);
+      const maxRedeem = await vault.maxRedeem(lp);
+      expect(maxRedeem).not.to.equal(0);
+      expect(maxRedeem).to.closeTo(_A(3000), MCENT);
       expect(await vault.maxMint(lp)).to.equal(0);
 
-      await expect(vault.connect(lp).redeem(_A(3000), lp, lp)).not.to.be.reverted;
+      await expect(vault.connect(lp).redeem(maxRedeem, lp, lp)).not.to.be.reverted;
       expect(await vault.totalAssets()).to.closeTo(0, MCENT);
       // Check LP has more or less the same initial funds
-      expect(await currency.balanceOf(lp)).to.closeTo(_A(INITIAL), MCENT * 10n);
+      expect(await currency.balanceOf(lp)).to.closeTo(_A(INITIAL), _A(5));
     });
 
     variant.tagit("Checks only authorized can setStrategy [CompoundV3Strategy]", async () => {
@@ -791,10 +795,18 @@ variants.forEach((variant) => {
       expect(await currency.balanceOf(await dummyStrategy.other())).to.closeTo(_A(3000), CENT);
     });
 
-    variant.tagit("Checks only authorized can setStrategy [AAVEV3Strategy]", async () => {
-      const { currency, vault, lp, strategy, anon, admin, AaveV3InvestStrategy } = await helpers.loadFixture(
-        variant.fixture
-      );
+    variant.tagit("Checks only authorized can setStrategy [AAVEV3Strategy] [SwapStableAAVEV3Strategy]", async () => {
+      const {
+        currency,
+        vault,
+        lp,
+        strategy,
+        anon,
+        admin,
+        AaveV3InvestStrategy,
+        SwapStableAaveV3InvestStrategy,
+        swapConfig,
+      } = await helpers.loadFixture(variant.fixture);
 
       // Just to increase coverage, I check forwardEntryPoint reverts
       await expect(vault.forwardToStrategy(123, ethers.toUtf8Bytes(""))).to.be.reverted;
@@ -802,9 +814,9 @@ variants.forEach((variant) => {
       expect(await vault.strategy()).to.equal(strategy);
       await expect(vault.connect(lp).mint(_A(3000), lp)).not.to.be.reverted;
 
-      expect(await vault.totalAssets()).to.closeTo(_A(3000), MCENT);
+      expect(await vault.totalAssets()).to.closeTo(_A(3000), _A(5));
       expect(await vault.maxRedeem(lp)).to.closeTo(_A(3000), MCENT);
-      expect(await vault.maxWithdraw(lp)).to.closeTo(_A(3000), MCENT);
+      expect(await vault.maxWithdraw(lp)).to.closeTo(_A(3000), _A(5));
 
       await expect(vault.connect(anon).setStrategy(ZeroAddress, ethers.toUtf8Bytes(""), false)).to.be.revertedWith(
         accessControlMessage(anon, null, "SET_STRATEGY_ROLE")
@@ -820,7 +832,7 @@ variants.forEach((variant) => {
 
       const aaveConfig = await ethers.getContractAt(PoolConfiguratorABI, ADDRESSES.AAVEPoolConfigurator);
 
-      await aaveConfig.connect(aaveAdmin).setReservePause(ADDRESSES.USDC, true);
+      await aaveConfig.connect(aaveAdmin).setReservePause(variant.supplyToken, true);
 
       expect(await vault.maxRedeem(lp)).to.equal(0);
       expect(await vault.maxWithdraw(lp)).to.equal(0);
@@ -830,16 +842,30 @@ variants.forEach((variant) => {
       );
 
       const DummyInvestStrategy = await ethers.getContractFactory("DummyInvestStrategy");
-      const otherStrategy = await AaveV3InvestStrategy.deploy(ADDRESSES.USDC, ADDRESSES.AAVEv3);
+      let otherStrategy;
+      let initConfig;
+      if (variant.name === "AAVEV3Strategy") {
+        otherStrategy = await AaveV3InvestStrategy.deploy(ADDRESSES.USDC, ADDRESSES.AAVEv3);
+        initConfig = ethers.toUtf8Bytes("");
+      } else {
+        otherStrategy = await SwapStableAaveV3InvestStrategy.deploy(
+          ADDRESSES.USDC,
+          ADDRESSES.USDC_NATIVE,
+          _W(1),
+          ADDRESSES.AAVEv3
+        );
+        initConfig = encodeSwapConfig(swapConfig);
+      }
       const dummyStrategy = await DummyInvestStrategy.deploy(ADDRESSES.USDC);
 
       // But if I force, it works
-      await expect(vault.connect(anon).setStrategy(otherStrategy, ethers.toUtf8Bytes(""), true))
+
+      await expect(vault.connect(anon).setStrategy(otherStrategy, initConfig, true))
         .to.emit(vault, "StrategyChanged")
         .withArgs(strategy, otherStrategy)
         .to.emit(vault, "WithdrawFailed");
 
-      expect(await vault.totalAssets()).to.closeTo(_A(3000), CENT);
+      expect(await vault.totalAssets()).to.closeTo(_A(3000), _A(5));
 
       // Setting a dummyStrategy returns totalAssets == 0 because can't see the assets in Compound
       let tx = await vault.connect(anon).setStrategy(dummyStrategy, encodeDummyStorage({}), true);
@@ -856,13 +882,13 @@ variants.forEach((variant) => {
       expect(await dummyStrategy.getFail(vault)).to.deep.equal([false, false, false, false]);
 
       // Setting again `strategy` works fine
-      await expect(vault.connect(anon).setStrategy(strategy, ethers.toUtf8Bytes(""), false))
+      await expect(vault.connect(anon).setStrategy(strategy, initConfig, false))
         .to.emit(vault, "StrategyChanged")
         .withArgs(dummyStrategy, strategy);
-      expect(await vault.totalAssets()).to.closeTo(_A(3000), CENT);
+      expect(await vault.totalAssets()).to.closeTo(_A(3000), _A(5));
 
       // Now I unpause Compound
-      await aaveConfig.connect(aaveAdmin).setReservePause(ADDRESSES.USDC, false);
+      await aaveConfig.connect(aaveAdmin).setReservePause(variant.supplyToken, false);
 
       // Setting a dummyStrategy sends the assets to the vault
       tx = await vault.connect(anon).setStrategy(dummyStrategy, encodeDummyStorage({}), false);
@@ -873,10 +899,10 @@ variants.forEach((variant) => {
       receipt = await tx.wait();
       evt = getTransactionEvent(dummyStrategy.interface, receipt, "Deposit");
       expect(evt).not.equal(null);
-      expect(evt.args.assets).to.be.closeTo(_A(3000), CENT);
+      expect(evt.args.assets).to.be.closeTo(_A(3000), _A(5));
 
-      expect(await vault.totalAssets()).to.closeTo(_A(3000), CENT);
-      expect(await currency.balanceOf(await dummyStrategy.other())).to.closeTo(_A(3000), CENT);
+      expect(await vault.totalAssets()).to.closeTo(_A(3000), _A(5));
+      expect(await currency.balanceOf(await dummyStrategy.other())).to.closeTo(_A(3000), _A(5));
     });
 
     variant.tagit("Checks methods can't be called directly [!CompoundV3ERC4626]", async () => {

@@ -109,16 +109,24 @@ contract SwapStableInvestStrategy is IInvestStrategy {
   }
 
   function withdraw(uint256 assets) public virtual override onlyDelegCall {
+    if (assets == 0) return;
     SwapLibrary.SwapConfig memory swapConfig = abi.decode(
       StorageSlot.getBytesSlot(storageSlot).value,
       (SwapLibrary.SwapConfig)
     );
-    uint256 price = Math.mulDiv(WAD, WAD, _price); // 1/_price - Units: investAsset/asset
     // swapLibrary expects a price expressed in tokenOut/tokenIn - OK since price is in _investAsset/_price
-    swapConfig.exactOutput(address(_investAsset), address(_asset), assets, price);
+    uint256 price = Math.mulDiv(WAD, WAD, _price); // 1/_price - Units: investAsset/asset
+    if (assets >= _convertAssets(_investAsset.balanceOf(address(this)), address(this))) {
+      // When the intention is to withdraw all the strategy assets, I convert all the _investAsset.
+      // This might result in more assets, but it's fine, better than leaving extra _investAsset in the strategy
+      swapConfig.exactInput(address(_investAsset), address(_asset), _investAsset.balanceOf(address(this)), price);
+    } else {
+      swapConfig.exactOutput(address(_investAsset), address(_asset), assets, price);
+    }
   }
 
   function deposit(uint256 assets) public virtual override onlyDelegCall {
+    if (assets == 0) return;
     SwapLibrary.SwapConfig memory swapConfig = abi.decode(
       StorageSlot.getBytesSlot(storageSlot).value,
       (SwapLibrary.SwapConfig)
