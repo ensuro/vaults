@@ -95,26 +95,38 @@ contract SwapStableInvestStrategy is IInvestStrategy {
     return address(_investAsset);
   }
 
-  function totalAssets(address contract_) public view virtual override returns (uint256 assets) {
+  function _convertAssets(uint256 investAssets, address contract_) internal view virtual returns (uint256 assets) {
     return
       Math.mulDiv(
-        Math.mulDiv(_investAsset.balanceOf(contract_) * _toWadFactor(_investAsset), _price, WAD),
+        Math.mulDiv(investAssets * _toWadFactor(_investAsset), _price, WAD),
         WAD - _getSwapConfig(contract_).maxSlippage,
         WAD
       ) / _toWadFactor(_asset);
   }
 
-  function withdraw(uint256 assets) external virtual override onlyDelegCall {
+  function totalAssets(address contract_) public view virtual override returns (uint256 assets) {
+    return _convertAssets(_investAsset.balanceOf(contract_), contract_);
+  }
+
+  function withdraw(uint256 assets) public virtual override onlyDelegCall {
+    if (assets == 0) return;
     SwapLibrary.SwapConfig memory swapConfig = abi.decode(
       StorageSlot.getBytesSlot(storageSlot).value,
       (SwapLibrary.SwapConfig)
     );
-    uint256 price = Math.mulDiv(WAD, WAD, _price); // 1/_price - Units: investAsset/asset
     // swapLibrary expects a price expressed in tokenOut/tokenIn - OK since price is in _investAsset/_price
-    swapConfig.exactOutput(address(_investAsset), address(_asset), assets, price);
+    uint256 price = Math.mulDiv(WAD, WAD, _price); // 1/_price - Units: investAsset/asset
+    if (assets >= _convertAssets(_investAsset.balanceOf(address(this)), address(this))) {
+      // When the intention is to withdraw all the strategy assets, I convert all the _investAsset.
+      // This might result in more assets, but it's fine, better than leaving extra _investAsset in the strategy
+      swapConfig.exactInput(address(_investAsset), address(_asset), _investAsset.balanceOf(address(this)), price);
+    } else {
+      swapConfig.exactOutput(address(_investAsset), address(_asset), assets, price);
+    }
   }
 
-  function deposit(uint256 assets) external virtual override onlyDelegCall {
+  function deposit(uint256 assets) public virtual override onlyDelegCall {
+    if (assets == 0) return;
     SwapLibrary.SwapConfig memory swapConfig = abi.decode(
       StorageSlot.getBytesSlot(storageSlot).value,
       (SwapLibrary.SwapConfig)
@@ -145,7 +157,7 @@ contract SwapStableInvestStrategy is IInvestStrategy {
     }
     // Should never reach to this revert, since method should be one of the enum values but leave it in case
     // we add new values in the enum and we forgot to add them here
-    // solhint-disable-next-line custom-errors,reason-string
+    // solhint-disable-next-line gas-custom-errors,reason-string
     else revert();
 
     return bytes("");

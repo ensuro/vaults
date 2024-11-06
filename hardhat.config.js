@@ -22,4 +22,7 @@ module.exports = {
   dependencyCompiler: {
     paths: ["@ensuro/core/contracts/mocks/TestCurrency.sol", "@ensuro/swaplibrary/contracts/mocks/SwapRouterMock.sol"],
   },
+  mocha: {
+    timeout: 100000,
+  },
 };

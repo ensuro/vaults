@@ -205,7 +205,8 @@ variants.forEach((variant) => {
 
       await expect(vault.connect(lp).withdraw(_a(200), lp, lp)).to.be.revertedWith("ERC4626: withdraw more than max");
 
-      await expect(vault.connect(lp).withdraw(_a(0), lp, lp)).to.be.revertedWith("AmountOut cannot be zero");
+      // withdraw(0) doesn't reverts
+      await expect(vault.connect(lp).withdraw(_a(0), lp, lp)).not.to.be.reverted;
     });
 
     variant.tagit("Deposit and accounting works when price != 1", async () => {
@@ -343,7 +344,7 @@ variants.forEach((variant) => {
       await expect(tx).to.emit(vault, "StrategyChanged").withArgs(strategy, dummyStrategy);
     });
 
-    variant.tagit("Disconnect should fail when force false and with asset", async function () {
+    variant.tagit("Disconnect doesn't fail when changing strategy", async function () {
       const { SwapStableInvestStrategy, setupVault, currA, currB, lp, admin, _a } = await variant.fixture();
       const strategy = await SwapStableInvestStrategy.deploy(currA, currB, _W(1));
       const vault = await setupVault(currA, strategy);
@@ -352,15 +353,22 @@ variants.forEach((variant) => {
       const dummyStrategy = await DummyInvestStrategy.deploy(currA);
 
       await vault.connect(admin).grantRole(getRole("SET_STRATEGY_ROLE"), lp);
-      await expect(vault.connect(lp).setStrategy(dummyStrategy, encodeDummyStorage({}), false)).to.be.revertedWith(
-        "AmountOut cannot be zero"
-      );
-
       await vault.connect(lp).deposit(_a(100), lp);
 
-      await expect(
-        vault.connect(lp).setStrategy(dummyStrategy, encodeDummyStorage({}), false)
-      ).to.be.revertedWithCustomError(strategy, "CannotDisconnectWithAssets");
+      await expect(vault.connect(lp).setStrategy(dummyStrategy, encodeDummyStorage({}), false)).not.to.be.reverted;
+    });
+
+    variant.tagit("Disconnect without assets doesn't revert", async function () {
+      const { SwapStableInvestStrategy, setupVault, currA, currB, lp, admin } = await variant.fixture();
+      const strategy = await SwapStableInvestStrategy.deploy(currA, currB, _W(1));
+      const vault = await setupVault(currA, strategy);
+
+      const DummyInvestStrategy = await ethers.getContractFactory("DummyInvestStrategy");
+      const dummyStrategy = await DummyInvestStrategy.deploy(currA);
+
+      await vault.connect(admin).grantRole(getRole("SET_STRATEGY_ROLE"), lp);
+      // Without assets, it doesn't revert
+      await expect(vault.connect(lp).setStrategy(dummyStrategy, encodeDummyStorage({}), false)).not.to.be.reverted;
     });
   });
 });
