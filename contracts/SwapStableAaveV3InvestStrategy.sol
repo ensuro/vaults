@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.28;
+pragma solidity ^0.8.0;
 
 import {IPool} from "./dependencies/aave-v3/IPool.sol";
 import {DataTypes} from "./dependencies/aave-v3/DataTypes.sol";

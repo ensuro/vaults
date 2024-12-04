@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.28;
+pragma solidity ^0.8.0;
 
 import {ICompoundV3} from "./interfaces/ICompoundV3.sol";
 import {ICometRewards} from "./interfaces/ICometRewards.sol";
