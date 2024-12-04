@@ -20,7 +20,11 @@ module.exports = {
     disambiguatePaths: false,
   },
   dependencyCompiler: {
-    paths: ["@ensuro/core/contracts/mocks/TestCurrency.sol", "@ensuro/swaplibrary/contracts/mocks/SwapRouterMock.sol"],
+    paths: [
+      "@ensuro/core/contracts/mocks/TestCurrency.sol",
+      "@ensuro/swaplibrary/contracts/mocks/SwapRouterMock.sol",
+      "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol",
+    ],
   },
   mocha: {
     timeout: 100000,

@@ -105,7 +105,7 @@ contract LimitOutflowModifier is Proxy {
 
   function _slotIndex() internal view returns (SlotIndex) {
     uint256 slotSize = _getLOMStorage().slotSize;
-    return SlotIndex.wrap(slotSize << (128 + block.timestamp / slotSize));
+    return SlotIndex.wrap((slotSize << 128) + block.timestamp / slotSize);
   }
 
   function _methodType(bytes4 selector) internal pure returns (MethodType) {
@@ -121,7 +121,7 @@ contract LimitOutflowModifier is Proxy {
 
   function _computeAssetsDelta() internal returns (int256) {
     bytes4 selector = bytes4(msg.data[0:4]);
-    uint256 amount = abi.decode(msg.data[5:36], (uint256));
+    uint256 amount = abi.decode(msg.data[4:36], (uint256));
     if (selector == IERC4626.withdraw.selector) return -int256(amount);
     if (selector == IERC4626.redeem.selector) return -int256(_convertToAssets(amount));
     if (selector == IERC4626.mint.selector) return int256(_convertToAssets(amount));
