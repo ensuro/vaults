@@ -1,6 +1,6 @@
 const { expect } = require("chai");
-const { amountFunction, _W, getRole } = require("@ensuro/core/js/utils");
-const { initForkCurrency, setupChain } = require("@ensuro/core/js/test-utils");
+const { amountFunction, _W, getRole, grantRole } = require("@ensuro/utils/js/utils");
+const { initForkCurrency, setupChain } = require("@ensuro/utils/js/test-utils");
 const { buildUniswapConfig } = require("@ensuro/swaplibrary/js/utils");
 const { encodeSwapConfig } = require("./utils");
 const hre = require("hardhat");
@@ -92,9 +92,9 @@ async function setUp() {
   );
   await currency.connect(lp).approve(vault, MaxUint256);
   await currency.connect(lp2).approve(vault, MaxUint256);
-  await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
-  await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp2);
-  await vault.connect(admin).grantRole(getRole("REBALANCER_ROLE"), admin);
+  await grantRole(hre, vault.connect(admin), "LP_ROLE", lp);
+  await grantRole(hre, vault.connect(admin), "LP_ROLE", lp2);
+  await grantRole(hre, vault.connect(admin), "REBALANCER_ROLE", admin);
 
   const COMPPrice = await ethers.getContractAt(ChainlinkABI, ADDRESSES.COMP_CHAINLINK);
 

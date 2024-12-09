@@ -39,6 +39,6 @@ contract InvestmentMock is ERC4626 {
   function maxRedeem(address owner) public view virtual override returns (uint256) {
     uint256 maxW = maxWithdraw(owner);
     if (maxW == super.maxWithdraw(owner)) return super.maxRedeem(owner);
-    return _convertToShares(maxW, Math.Rounding.Down);
+    return _convertToShares(maxW, Math.Rounding.Floor);
   }
 }

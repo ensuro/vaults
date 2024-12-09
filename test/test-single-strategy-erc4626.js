@@ -1,6 +1,6 @@
 const { expect } = require("chai");
-const { amountFunction, getRole, accessControlMessage } = require("@ensuro/core/js/utils");
-const { initCurrency } = require("@ensuro/core/js/test-utils");
+const { amountFunction, getRole } = require("@ensuro/utils/js/utils");
+const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const { encodeDummyStorage, dummyStorage } = require("./utils");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
@@ -17,7 +17,7 @@ const SYMB = "SSV";
 async function setUp() {
   const [, lp, lp2, anon, guardian, admin] = await ethers.getSigners();
   const currency = await initCurrency(
-    { name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(50000) },
+    { name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(50000), extraArgs: [admin] },
     [lp, lp2],
     [_A(INITIAL), _A(INITIAL)]
   );
@@ -145,9 +145,9 @@ describe("SingleStrategyERC4626 contract tests", function () {
   it("If disconnect fails it can't change the strategy unless forced", async () => {
     const { vault, strategy, admin, anon } = await helpers.loadFixture(setUp);
     await expect(vault.forwardToStrategy(0, encodeDummyStorage({ failDisconnect: true }))).not.to.be.reverted;
-    await expect(vault.connect(anon).setStrategy(strategy, encodeDummyStorage({}), false)).to.be.revertedWith(
-      accessControlMessage(anon, null, "SET_STRATEGY_ROLE")
-    );
+    await expect(
+      vault.connect(anon).setStrategy(strategy, encodeDummyStorage({}), false)
+    ).to.be.revertedWithCustomError(vault, "AccessControlUnauthorizedAccount");
     await vault.connect(admin).grantRole(getRole("SET_STRATEGY_ROLE"), anon);
     await expect(vault.connect(anon).setStrategy(strategy, encodeDummyStorage({}), false))
       .to.be.revertedWithCustomError(strategy, "Fail")
@@ -159,10 +159,10 @@ describe("SingleStrategyERC4626 contract tests", function () {
   });
 
   it("Initialization fails if strategy and vault have different assets", async () => {
-    const { SingleStrategyERC4626, DummyInvestStrategy, adminAddr, currency } = await helpers.loadFixture(setUp);
+    const { SingleStrategyERC4626, DummyInvestStrategy, adminAddr, currency, admin } = await helpers.loadFixture(setUp);
 
     const differentCurrency = await initCurrency(
-      { name: "Different USDC", symbol: "DUSDC", decimals: 6, initial_supply: _A(50000) },
+      { name: "Different USDC", symbol: "DUSDC", decimals: 6, initial_supply: _A(50000), extraArgs: [admin] },
       []
     );
 
@@ -191,7 +191,7 @@ describe("SingleStrategyERC4626 contract tests", function () {
     const { vault, DummyInvestStrategy, admin, SingleStrategyERC4626 } = await helpers.loadFixture(setUp);
 
     const differentCurrency = await initCurrency(
-      { name: "Different USDC", symbol: "DUSDC", decimals: 6, initial_supply: _A(50000) },
+      { name: "Different USDC", symbol: "DUSDC", decimals: 6, initial_supply: _A(50000), extraArgs: [admin] },
       []
     );
 
@@ -208,25 +208,27 @@ describe("SingleStrategyERC4626 contract tests", function () {
     const { vault, admin, guardian, SingleStrategyERC4626 } = await helpers.loadFixture(setUp);
     const newImpl = await SingleStrategyERC4626.deploy();
 
-    await expect(vault.connect(admin).upgradeTo(newImpl)).to.be.revertedWith(
-      accessControlMessage(admin, null, "GUARDIAN_ROLE")
+    await expect(vault.connect(admin).upgradeToAndCall(newImpl, "0x")).to.be.revertedWithCustomError(
+      vault,
+      "AccessControlUnauthorizedAccount"
     );
-    await expect(vault.connect(guardian).upgradeTo(newImpl)).to.emit(vault, "Upgraded");
+    await expect(vault.connect(guardian).upgradeToAndCall(newImpl, "0x")).to.emit(vault, "Upgraded");
   });
 
   it("Checks only DEFAULT_ADMIN_ROLE can setRoleAdmin, then others can set specific roles", async () => {
     const { vault, admin, guardian } = await helpers.loadFixture(setUp);
 
-    await expect(vault.connect(guardian).setRoleAdmin(getRole("LP_ROLE"), getRole("LP_ROLE_ADMIN"))).to.be.revertedWith(
-      accessControlMessage(guardian, null, "DEFAULT_ADMIN_ROLE")
-    );
+    await expect(
+      vault.connect(guardian).setRoleAdmin(getRole("LP_ROLE"), getRole("LP_ROLE_ADMIN"))
+    ).to.be.revertedWithCustomError(vault, "AccessControlUnauthorizedAccount");
 
     await expect(vault.connect(admin).setRoleAdmin(getRole("LP_ROLE"), getRole("LP_ROLE_ADMIN")))
       .to.emit(vault, "RoleAdminChanged")
       .withArgs(getRole("LP_ROLE"), getRole("DEFAULT_ADMIN_ROLE"), getRole("LP_ROLE_ADMIN"));
 
-    await expect(vault.connect(admin).grantRole(getRole("LP_ROLE"), guardian)).to.be.revertedWith(
-      accessControlMessage(admin, null, "LP_ROLE_ADMIN")
+    await expect(vault.connect(admin).grantRole(getRole("LP_ROLE"), guardian)).to.be.revertedWithCustomError(
+      vault,
+      "AccessControlUnauthorizedAccount"
     );
 
     await vault.connect(admin).grantRole(getRole("LP_ROLE_ADMIN"), guardian);

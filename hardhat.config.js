@@ -1,4 +1,5 @@
 require("@nomicfoundation/hardhat-toolbox");
+require("@openzeppelin/hardhat-upgrades");
 require("hardhat-dependency-compiler");
 require("hardhat-contract-sizer");
 
@@ -19,7 +20,7 @@ module.exports = {
     disambiguatePaths: false,
   },
   dependencyCompiler: {
-    paths: ["@ensuro/core/contracts/mocks/TestCurrency.sol", "@ensuro/swaplibrary/contracts/mocks/SwapRouterMock.sol"],
+    paths: ["@ensuro/utils/contracts/TestCurrency.sol", "@ensuro/swaplibrary/contracts/mocks/SwapRouterMock.sol"],
   },
   mocha: {
     timeout: 100000,

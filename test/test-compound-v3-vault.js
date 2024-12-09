@@ -1,6 +1,6 @@
 const { expect } = require("chai");
-const { amountFunction, _W, getRole, accessControlMessage, getTransactionEvent } = require("@ensuro/core/js/utils");
-const { initForkCurrency, setupChain } = require("@ensuro/core/js/test-utils");
+const { amountFunction, _W, getRole, grantRole, getTransactionEvent } = require("@ensuro/utils/js/utils");
+const { initForkCurrency, setupChain } = require("@ensuro/utils/js/test-utils");
 const { buildUniswapConfig } = require("@ensuro/swaplibrary/js/utils");
 const { encodeSwapConfig, encodeDummyStorage, tagit } = require("./utils");
 const { anyUint } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
@@ -157,6 +157,7 @@ const variants = [
           SwapLibrary: await ethers.resolveAddress(swapLibrary),
         },
       });
+      const strategy = await CompoundV3ERC4626.deploy(ADDRESSES.cUSDCv3, ADDRESSES.REWARDS);
       const vault = await hre.upgrades.deployProxy(CompoundV3ERC4626, [NAME, SYMB, adminAddr, swapConfig], {
         kind: "uups",
         constructorArgs: [ADDRESSES.cUSDCv3, ADDRESSES.REWARDS],
@@ -164,14 +165,15 @@ const variants = [
       });
       await currency.connect(lp).approve(vault, MaxUint256);
       await currency.connect(lp2).approve(vault, MaxUint256);
-      await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
-      await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp2);
+      await grantRole(hre, vault.connect(admin), "LP_ROLE", lp);
+      await grantRole(hre, vault.connect(admin), "LP_ROLE", lp2);
 
       return {
         currency,
         CompoundV3ERC4626,
         swapConfig,
         vault,
+        strategy,
         adminAddr,
         lp,
         lp2,
@@ -182,8 +184,10 @@ const variants = [
       };
     },
     harvestRewards: async (vault, amount) => vault.harvestRewards(amount),
-    accessControlCheck: async (action, user, role) =>
-      expect(action).to.be.revertedWith(accessControlMessage(user, null, role)),
+    accessControlCheck: async (action, user, role, contract) =>
+      expect(action)
+        .to.be.revertedWithCustomError(contract, "AccessControlUnauthorizedAccount")
+        .withArgs(user, getRole(role)),
     getSwapConfig: async (vault) => vault.getSwapConfig(),
     setSwapConfig: async (vault, swapConfig) => vault.setSwapConfig(swapConfig),
   },
@@ -210,8 +214,8 @@ const variants = [
       );
       await currency.connect(lp).approve(vault, MaxUint256);
       await currency.connect(lp2).approve(vault, MaxUint256);
-      await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
-      await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp2);
+      await grantRole(hre, vault.connect(admin), "LP_ROLE", lp);
+      await grantRole(hre, vault.connect(admin), "LP_ROLE", lp2);
 
       return {
         currency,
@@ -262,8 +266,8 @@ const variants = [
       );
       await currency.connect(lp).approve(vault, MaxUint256);
       await currency.connect(lp2).approve(vault, MaxUint256);
-      await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
-      await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp2);
+      await grantRole(hre, vault.connect(admin), "LP_ROLE", lp);
+      await grantRole(hre, vault.connect(admin), "LP_ROLE", lp2);
 
       return {
         currency,
@@ -319,8 +323,8 @@ const variants = [
 
       await currency.connect(lp).approve(vault, MaxUint256);
       await currency.connect(lp2).approve(vault, MaxUint256);
-      await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
-      await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp2);
+      await grantRole(hre, vault.connect(admin), "LP_ROLE", lp);
+      await grantRole(hre, vault.connect(admin), "LP_ROLE", lp2);
 
       return {
         currency,
@@ -370,8 +374,9 @@ variants.forEach((variant) => {
       const { CompoundV3ERC4626, adminAddr, swapConfig } = await helpers.loadFixture(variant.fixture);
       const newVault = await CompoundV3ERC4626.deploy(ADDRESSES.cUSDCv3, ADDRESSES.REWARDS);
       await expect(newVault.deploymentTransaction()).to.emit(newVault, "Initialized");
-      await expect(newVault.initialize("foo", "bar", adminAddr, swapConfig)).to.be.revertedWith(
-        "Initializable: contract is already initialized"
+      await expect(newVault.initialize("foo", "bar", adminAddr, swapConfig)).to.be.revertedWithCustomError(
+        CompoundV3ERC4626,
+        "InvalidInitialization"
       );
     });
 
@@ -388,7 +393,7 @@ variants.forEach((variant) => {
           await ethers.resolveAddress(strategy),
           encodeSwapConfig(swapConfig)
         )
-      ).to.be.revertedWith("Initializable: contract is already initialized");
+      ).to.be.revertedWithCustomError(SingleStrategyERC4626, "InvalidInitialization");
     });
 
     variant.tagit("Checks reverts if extraData is sent on initialization [!CompoundV3ERC4626]", async () => {
@@ -418,10 +423,15 @@ variants.forEach((variant) => {
 
     variant.tagit("Checks entering the vault is permissioned, exit isn't [!SwapStableAAVEV3Strategy]", async () => {
       const { currency, vault, anon, lp } = await helpers.loadFixture(variant.fixture);
+      await expect(vault.connect(anon).deposit(_A(100), anon)).to.be.revertedWithCustomError(
+        vault,
+        "ERC4626ExceededMaxDeposit"
+      );
 
-      await expect(vault.connect(anon).deposit(_A(100), anon)).to.be.revertedWith("ERC4626: deposit more than max");
-
-      await expect(vault.connect(anon).mint(_A(100), anon)).to.be.revertedWith("ERC4626: mint more than max");
+      await expect(vault.connect(anon).mint(_A(100), anon)).to.be.revertedWithCustomError(
+        vault,
+        "ERC4626ExceededMaxMint"
+      );
 
       await expect(vault.connect(lp).deposit(_A(100), lp))
         .to.emit(vault, "Deposit")
@@ -435,8 +445,9 @@ variants.forEach((variant) => {
       expect(await currency.balanceOf(vault)).to.equal(0);
       expect(await vault.totalAssets()).to.closeTo(_A(100), MCENT);
 
-      await expect(vault.connect(anon).withdraw(_A(100), anon, anon)).to.be.revertedWith(
-        "ERC4626: withdraw more than max"
+      await expect(vault.connect(anon).withdraw(_A(100), anon, anon)).to.be.revertedWithCustomError(
+        vault,
+        "ERC4626ExceededMaxWithdraw"
       );
 
       await vault.connect(lp).transfer(anon, _A(50));
@@ -491,7 +502,6 @@ variants.forEach((variant) => {
       await expect(vault.connect(lp2).mint(_A(2000), lp2)).not.to.be.reverted;
 
       expect(await vault.totalAssets()).to.be.closeTo(_A(3000), MCENT);
-
       await variant.accessControlCheck(
         variant.harvestRewards(vault.connect(anon), _A(100)),
         anon,
@@ -499,7 +509,7 @@ variants.forEach((variant) => {
         strategy
       );
 
-      await vault.connect(admin).grantRole(getRole("HARVEST_ROLE"), anon);
+      await grantRole(hre, vault.connect(admin), "HARVEST_ROLE", anon);
 
       await expect(variant.harvestRewards(vault.connect(anon), _A(100))).to.be.revertedWith("AS");
 
@@ -538,7 +548,7 @@ variants.forEach((variant) => {
       expect(await variant.getSwapConfig(vault, strategy)).to.deep.equal(swapConfig);
       await expect(vault.connect(lp).mint(_A(3000), lp)).not.to.be.reverted;
 
-      await vault.connect(admin).grantRole(getRole("HARVEST_ROLE"), anon);
+      await grantRole(hre, vault.connect(admin), "HARVEST_ROLE", anon);
 
       await helpers.time.increase(MONTH);
       const assets = await vault.totalAssets();
@@ -558,7 +568,7 @@ variants.forEach((variant) => {
         strategy
       );
 
-      await vault.connect(admin).grantRole(getRole("SWAP_ADMIN_ROLE"), anon);
+      await grantRole(hre, vault.connect(admin), "SWAP_ADMIN_ROLE", anon);
 
       // Check validates new config
       await expect(
@@ -614,8 +624,14 @@ variants.forEach((variant) => {
 
         expect(await vault.maxMint(lp)).to.equal(0);
         expect(await vault.maxDeposit(lp)).to.equal(0);
-        await expect(vault.connect(lp).mint(_A(3000), lp)).to.be.revertedWith("ERC4626: mint more than max");
-        await expect(vault.connect(lp).deposit(_A(3000), lp)).to.be.revertedWith("ERC4626: deposit more than max");
+        await expect(vault.connect(lp).mint(_A(3000), lp)).to.be.revertedWithCustomError(
+          vault,
+          "ERC4626ExceededMaxMint"
+        );
+        await expect(vault.connect(lp).deposit(_A(3000), lp)).to.be.revertedWithCustomError(
+          vault,
+          "ERC4626ExceededMaxDeposit"
+        );
 
         // Then I unpause deposit
         await cUSDCv3.connect(compGuardian).pause(false, false, false, false, false);
@@ -632,9 +648,13 @@ variants.forEach((variant) => {
         expect(await vault.maxRedeem(lp)).to.equal(0);
         expect(await vault.maxWithdraw(lp)).to.equal(0);
 
-        await expect(vault.connect(lp).redeem(_A(1000), lp, lp)).to.be.revertedWith("ERC4626: redeem more than max");
-        await expect(vault.connect(lp).withdraw(_A(1000), lp, lp)).to.be.revertedWith(
-          "ERC4626: withdraw more than max"
+        await expect(vault.connect(lp).redeem(_A(1000), lp, lp)).to.be.revertedWithCustomError(
+          vault,
+          "ERC4626ExceededMaxRedeem"
+        );
+        await expect(vault.connect(lp).withdraw(_A(1000), lp, lp)).to.be.revertedWithCustomError(
+          vault,
+          "ERC4626ExceededMaxWithdraw"
         );
 
         // Then I unpause everything
@@ -664,8 +684,11 @@ variants.forEach((variant) => {
 
       expect(await vault.maxMint(lp)).to.equal(0);
       expect(await vault.maxDeposit(lp)).to.equal(0);
-      await expect(vault.connect(lp).mint(_A(3000), lp)).to.be.revertedWith("ERC4626: mint more than max");
-      await expect(vault.connect(lp).deposit(_A(3000), lp)).to.be.revertedWith("ERC4626: deposit more than max");
+      await expect(vault.connect(lp).mint(_A(3000), lp)).to.be.revertedWithCustomError(vault, "ERC4626ExceededMaxMint");
+      await expect(vault.connect(lp).deposit(_A(3000), lp)).to.be.revertedWithCustomError(
+        vault,
+        "ERC4626ExceededMaxDeposit"
+      );
 
       // Same happens if I set the reserve frozen (can't set as inactive because it has funds)
       await aaveConfig.connect(aaveAdmin).setReservePause(variant.supplyToken, false);
@@ -688,8 +711,14 @@ variants.forEach((variant) => {
       expect(await vault.maxRedeem(lp)).to.equal(0);
       expect(await vault.maxWithdraw(lp)).to.equal(0);
 
-      await expect(vault.connect(lp).redeem(_A(1000), lp, lp)).to.be.revertedWith("ERC4626: redeem more than max");
-      await expect(vault.connect(lp).withdraw(_A(1000), lp, lp)).to.be.revertedWith("ERC4626: withdraw more than max");
+      await expect(vault.connect(lp).redeem(_A(1000), lp, lp)).to.be.revertedWithCustomError(
+        vault,
+        "ERC4626ExceededMaxRedeem"
+      );
+      await expect(vault.connect(lp).withdraw(_A(1000), lp, lp)).to.be.revertedWithCustomError(
+        vault,
+        "ERC4626ExceededMaxWithdraw"
+      );
 
       // Then I unpause and I freeze the reserve. Withdraw should work and deposit doesn't
       await aaveConfig.connect(aaveAdmin).setReservePause(variant.supplyToken, false);
@@ -721,8 +750,8 @@ variants.forEach((variant) => {
 
       await expect(
         vault.connect(anon).setStrategy(ZeroAddress, encodeSwapConfig(swapConfig), false)
-      ).to.be.revertedWith(accessControlMessage(anon, null, "SET_STRATEGY_ROLE"));
-      await vault.connect(admin).grantRole(getRole("SET_STRATEGY_ROLE"), anon);
+      ).to.be.revertedWithCustomError(strategy, "AccessControlUnauthorizedAccount");
+      await grantRole(hre, vault.connect(admin), "SET_STRATEGY_ROLE", anon);
 
       await expect(vault.connect(anon).setStrategy(ZeroAddress, encodeSwapConfig(swapConfig), false)).to.be.reverted;
 
@@ -818,10 +847,10 @@ variants.forEach((variant) => {
       expect(await vault.maxRedeem(lp)).to.closeTo(_A(3000), MCENT);
       expect(await vault.maxWithdraw(lp)).to.closeTo(_A(3000), _A(5));
 
-      await expect(vault.connect(anon).setStrategy(ZeroAddress, ethers.toUtf8Bytes(""), false)).to.be.revertedWith(
-        accessControlMessage(anon, null, "SET_STRATEGY_ROLE")
-      );
-      await vault.connect(admin).grantRole(getRole("SET_STRATEGY_ROLE"), anon);
+      await expect(
+        vault.connect(anon).setStrategy(ZeroAddress, ethers.toUtf8Bytes(""), false)
+      ).to.be.revertedWithCustomError(strategy, "AccessControlUnauthorizedAccount");
+      await grantRole(hre, vault.connect(admin), "SET_STRATEGY_ROLE", anon);
 
       await expect(vault.connect(anon).setStrategy(ZeroAddress, ethers.toUtf8Bytes(""), false)).to.be.reverted;
 
