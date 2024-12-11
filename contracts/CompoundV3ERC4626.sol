@@ -4,7 +4,7 @@ pragma solidity ^0.8.0;
 import {ICompoundV3} from "./interfaces/ICompoundV3.sol";
 import {ICometRewards} from "./interfaces/ICometRewards.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import {IERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {SwapLibrary} from "@ensuro/swaplibrary/contracts/SwapLibrary.sol";
 import {PermissionedERC4626} from "./PermissionedERC4626.sol";
@@ -62,7 +62,7 @@ contract CompoundV3ERC4626 is PermissionedERC4626 {
     address admin_,
     SwapLibrary.SwapConfig calldata swapConfig_
   ) internal onlyInitializing {
-    __PermissionedERC4626_init(name_, symbol_, admin_, IERC20Upgradeable(_cToken.baseToken()));
+    __PermissionedERC4626_init(name_, symbol_, admin_, IERC20(_cToken.baseToken()));
     __CompoundV3ERC4626_init_unchained(swapConfig_);
   }
 

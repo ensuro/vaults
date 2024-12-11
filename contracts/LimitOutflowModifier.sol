@@ -129,7 +129,7 @@ contract LimitOutflowModifier is Proxy {
     return int256(amount);
   }
 
-  function _beforeFallback() internal override {
+  function _fallback() internal override {
     MethodType methodType = _methodType(bytes4(msg.data[0:4]));
     // If some of the enter/exit methods called, updates
     if (methodType != MethodType.other) {
@@ -148,6 +148,6 @@ contract LimitOutflowModifier is Proxy {
       }
       _getLOMStorage().assetsDelta[slot] += assetsDelta;
     }
-    super._beforeFallback();
+    super._fallback();
   }
 }
