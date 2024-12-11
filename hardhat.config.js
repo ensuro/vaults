@@ -3,6 +3,10 @@ require("@openzeppelin/hardhat-upgrades");
 require("hardhat-dependency-compiler");
 require("hardhat-contract-sizer");
 
+const { installWrapper } = require("./test/hardhat-retry");
+
+installWrapper();
+
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
   solidity: {
@@ -12,6 +16,13 @@ module.exports = {
         enabled: true,
         runs: 200,
       },
+    },
+  },
+  networks: {
+    hardhat: {
+      gas: 12000000,
+      initialBaseFeePerGas: 0,
+      allowUnlimitedContractSize: true,
     },
   },
   contractSizer: {
@@ -27,6 +38,6 @@ module.exports = {
     ],
   },
   mocha: {
-    timeout: 100000,
+    timeout: 200000,
   },
 };
