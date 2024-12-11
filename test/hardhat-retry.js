@@ -2,7 +2,7 @@ const { ProviderWrapper } = require("hardhat/plugins");
 const { ProviderError } = require("hardhat/internal/core/providers/errors");
 
 const MAX_RETRIES = 3;
-const BACKOFF_DELAY_MS = 1000;
+const BACKOFF_DELAY_MS = 2000;
 
 // eslint-disable-next-line func-style
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
