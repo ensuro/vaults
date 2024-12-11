@@ -22,7 +22,6 @@ module.exports = {
     hardhat: {
       gas: 12000000,
       initialBaseFeePerGas: 0,
-      allowUnlimitedContractSize: true,
     },
   },
   contractSizer: {
@@ -38,6 +37,6 @@ module.exports = {
     ],
   },
   mocha: {
-    timeout: 200000,
+    timeout: 100000,
   },
 };
