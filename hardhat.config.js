@@ -2,6 +2,9 @@ require("@nomicfoundation/hardhat-toolbox");
 require("@openzeppelin/hardhat-upgrades");
 require("hardhat-dependency-compiler");
 require("hardhat-contract-sizer");
+const hretry = require("@ensuro/utils/js/hardhat-retry");
+
+hretry.installWrapper();
 
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
@@ -12,6 +15,11 @@ module.exports = {
         enabled: true,
         runs: 200,
       },
+    },
+  },
+  networks: {
+    hardhat: {
+      initialBaseFeePerGas: 0,
     },
   },
   contractSizer: {
