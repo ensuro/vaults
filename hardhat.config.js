@@ -21,6 +21,8 @@ module.exports = {
   networks: {
     hardhat: {
       initialBaseFeePerGas: 0,
+      blockGasLimit: 12000000,
+      gasPrice: 8000000000,
     },
   },
   contractSizer: {
