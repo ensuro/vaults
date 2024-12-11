@@ -20,7 +20,6 @@ module.exports = {
   },
   networks: {
     hardhat: {
-      gas: 12000000,
       initialBaseFeePerGas: 0,
     },
   },
@@ -35,8 +34,5 @@ module.exports = {
       "@ensuro/swaplibrary/contracts/mocks/SwapRouterMock.sol",
       "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol",
     ],
-  },
-  mocha: {
-    timeout: 100000,
   },
 };
