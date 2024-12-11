@@ -1,8 +1,8 @@
 const { expect } = require("chai");
-const { amountFunction, _W, getRole } = require("@ensuro/core/js/utils");
+const { amountFunction, _W, getRole } = require("@ensuro/utils/js/utils");
 const { buildUniswapConfig } = require("@ensuro/swaplibrary/js/utils");
 const { encodeSwapConfig, encodeDummyStorage, tagit } = require("./utils");
-const { initForkCurrency, setupChain } = require("@ensuro/core/js/test-utils");
+const { initForkCurrency, setupChain } = require("@ensuro/utils/js/test-utils");
 const { anyUint } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");

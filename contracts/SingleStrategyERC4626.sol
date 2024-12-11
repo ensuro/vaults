@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.16;
+pragma solidity ^0.8.0;
 
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import {IERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {StorageSlot} from "@openzeppelin/contracts/utils/StorageSlot.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {MathUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/math/MathUpgradeable.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {PermissionedERC4626} from "./PermissionedERC4626.sol";
 import {IInvestStrategy} from "./interfaces/IInvestStrategy.sol";
 import {IExposeStorage} from "./interfaces/IExposeStorage.sol";
@@ -61,7 +61,7 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     string memory name_,
     string memory symbol_,
     address admin_,
-    IERC20Upgradeable asset_,
+    IERC20 asset_,
     IInvestStrategy strategy_,
     bytes memory initStrategyData
   ) public virtual initializer {
@@ -73,7 +73,7 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     string memory name_,
     string memory symbol_,
     address admin_,
-    IERC20Upgradeable asset_,
+    IERC20 asset_,
     IInvestStrategy strategy_,
     bytes memory initStrategyData
   ) internal onlyInitializing {
@@ -95,7 +95,7 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
    * @dev See {IERC4626-maxWithdraw}.
    */
   function maxWithdraw(address owner) public view virtual override returns (uint256) {
-    return MathUpgradeable.min(_strategy.maxWithdraw(), super.maxWithdraw(owner));
+    return Math.min(_strategy.maxWithdraw(), super.maxWithdraw(owner));
   }
 
   /**
@@ -103,14 +103,14 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
    */
   function maxRedeem(address owner) public view virtual override returns (uint256) {
     uint256 maxAssets = _strategy.maxWithdraw();
-    return MathUpgradeable.min(_convertToShares(maxAssets, MathUpgradeable.Rounding.Down), super.maxRedeem(owner));
+    return Math.min(_convertToShares(maxAssets, Math.Rounding.Floor), super.maxRedeem(owner));
   }
 
   /**
    * @dev See {IERC4626-maxDeposit}.
    */
   function maxDeposit(address owner) public view virtual override returns (uint256) {
-    return MathUpgradeable.min(_strategy.maxDeposit(), super.maxDeposit(owner));
+    return Math.min(_strategy.maxDeposit(), super.maxDeposit(owner));
   }
 
   /**
@@ -118,7 +118,7 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
    */
   function maxMint(address owner) public view virtual override returns (uint256) {
     uint256 maxAssets = _strategy.maxDeposit();
-    return MathUpgradeable.min(_convertToShares(maxAssets, MathUpgradeable.Rounding.Down), super.maxMint(owner));
+    return Math.min(_convertToShares(maxAssets, Math.Rounding.Floor), super.maxMint(owner));
   }
 
   /**

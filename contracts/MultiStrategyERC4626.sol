@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.16;
+pragma solidity ^0.8.0;
 
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import {IERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {StorageSlot} from "@openzeppelin/contracts/utils/StorageSlot.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {MathUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/math/MathUpgradeable.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {PermissionedERC4626} from "./PermissionedERC4626.sol";
 import {IInvestStrategy} from "./interfaces/IInvestStrategy.sol";
 import {IExposeStorage} from "./interfaces/IExposeStorage.sol";
@@ -87,7 +87,7 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     string memory name_,
     string memory symbol_,
     address admin_,
-    IERC20Upgradeable asset_,
+    IERC20 asset_,
     IInvestStrategy[] memory strategies_,
     bytes[] memory initStrategyDatas,
     uint8[] memory depositQueue_,
@@ -110,7 +110,7 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     string memory name_,
     string memory symbol_,
     address admin_,
-    IERC20Upgradeable asset_,
+    IERC20 asset_,
     IInvestStrategy[] memory strategies_,
     bytes[] memory initStrategyDatas,
     uint8[] memory depositQueue_,
@@ -181,9 +181,9 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
    */
   function maxRedeem(address owner) public view virtual override returns (uint256) {
     uint256 shares = super.maxRedeem(owner);
-    uint256 ownerAssets = _convertToAssets(shares, MathUpgradeable.Rounding.Down);
+    uint256 ownerAssets = _convertToAssets(shares, Math.Rounding.Floor);
     uint256 maxAssets = _maxWithdrawable(ownerAssets);
-    return (maxAssets == ownerAssets) ? shares : _convertToShares(maxAssets, MathUpgradeable.Rounding.Down);
+    return (maxAssets == ownerAssets) ? shares : _convertToShares(maxAssets, Math.Rounding.Floor);
   }
 
   /**
@@ -204,7 +204,7 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
   function maxMint(address owner) public view virtual override returns (uint256) {
     if (super.maxMint(owner) == 0) return 0;
     uint256 maxDep = maxDeposit(owner);
-    return maxDep == type(uint256).max ? type(uint256).max : _convertToShares(maxDep, MathUpgradeable.Rounding.Down);
+    return maxDep == type(uint256).max ? type(uint256).max : _convertToShares(maxDep, Math.Rounding.Floor);
   }
 
   /**
@@ -226,7 +226,7 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     uint256 left = assets;
     for (uint256 i; left != 0 && _withdrawQueue[i] != 0 && i < MAX_STRATEGIES; i++) {
       IInvestStrategy strategy = _strategies[_withdrawQueue[i] - 1];
-      uint256 toWithdraw = MathUpgradeable.min(left, strategy.maxWithdraw());
+      uint256 toWithdraw = Math.min(left, strategy.maxWithdraw());
       if (toWithdraw == 0) continue;
       strategy.dcWithdraw(toWithdraw, false);
       left -= toWithdraw;
@@ -241,7 +241,7 @@ contract MultiStrategyERC4626 is PermissionedERC4626, IExposeStorage {
     uint256 left = assets;
     for (uint256 i; left != 0 && _depositQueue[i] != 0 && i < MAX_STRATEGIES; i++) {
       IInvestStrategy strategy = _strategies[_depositQueue[i] - 1];
-      uint256 toDeposit = MathUpgradeable.min(left, strategy.maxDeposit());
+      uint256 toDeposit = Math.min(left, strategy.maxDeposit());
       if (toDeposit == 0) continue;
       strategy.dcDeposit(toDeposit, false);
       left -= toDeposit;

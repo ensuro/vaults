@@ -1,8 +1,8 @@
 const { expect } = require("chai");
-const { amountFunction, _W, getRole, getTransactionEvent } = require("@ensuro/core/js/utils");
+const { amountFunction, _W, getRole, getTransactionEvent } = require("@ensuro/utils/js/utils");
 const { buildUniswapConfig } = require("@ensuro/swaplibrary/js/utils");
 const { encodeSwapConfig, encodeDummyStorage, tagit } = require("./utils");
-const { initCurrency } = require("@ensuro/core/js/test-utils");
+const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const { anyUint } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
@@ -27,22 +27,46 @@ async function setUp() {
   const uniswapRouterMock = await SwapRouterMock.deploy(admin);
 
   const USDA = await initCurrency(
-    { name: "Test Currency with 6 decimals", symbol: "USDA", decimals: 6, initial_supply: _A(50000) },
+    {
+      name: "Test Currency with 6 decimals",
+      symbol: "USDA",
+      decimals: 6,
+      initial_supply: _A(50000),
+      extraArgs: [admin],
+    },
     [lp, lp2, uniswapRouterMock],
     [_A(INITIAL), _A(INITIAL), _A(INITIAL * 3)]
   );
   const USDB = await initCurrency(
-    { name: "Another test Currency with 6 decimals", symbol: "USDB", decimals: 6, initial_supply: _A(50000) },
+    {
+      name: "Another test Currency with 6 decimals",
+      symbol: "USDB",
+      decimals: 6,
+      initial_supply: _A(50000),
+      extraArgs: [admin],
+    },
     [lp, lp2, uniswapRouterMock],
     [_A(INITIAL), _A(INITIAL), _A(INITIAL * 3)]
   );
   const USDM = await initCurrency(
-    { name: "Test Currency with 18 decimals", symbol: "USDM", decimals: 18, initial_supply: _W(50000) },
+    {
+      name: "Test Currency with 18 decimals",
+      symbol: "USDM",
+      decimals: 18,
+      initial_supply: _W(50000),
+      extraArgs: [admin],
+    },
     [lp, lp2, uniswapRouterMock],
     [_W(INITIAL), _W(INITIAL), _W(INITIAL * 3)]
   );
   const USDX = await initCurrency(
-    { name: "Test Currency with 18 decimals", symbol: "USDX", decimals: 18, initial_supply: _W(50000) },
+    {
+      name: "Test Currency with 18 decimals",
+      symbol: "USDX",
+      decimals: 18,
+      initial_supply: _W(50000),
+      extraArgs: [admin],
+    },
     [lp, lp2, uniswapRouterMock],
     [_W(INITIAL), _W(INITIAL), _W(INITIAL * 3)]
   );
@@ -203,7 +227,10 @@ variants.forEach((variant) => {
 
       await vault.connect(lp).deposit(_a(100), lp);
 
-      await expect(vault.connect(lp).withdraw(_a(200), lp, lp)).to.be.revertedWith("ERC4626: withdraw more than max");
+      await expect(vault.connect(lp).withdraw(_a(200), lp, lp)).to.be.revertedWithCustomError(
+        vault,
+        "ERC4626ExceededMaxWithdraw"
+      );
 
       // withdraw(0) doesn't reverts
       await expect(vault.connect(lp).withdraw(_a(0), lp, lp)).not.to.be.reverted;

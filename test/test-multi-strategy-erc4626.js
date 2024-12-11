@@ -1,6 +1,6 @@
 const { expect } = require("chai");
-const { amountFunction, getRole, accessControlMessage } = require("@ensuro/core/js/utils");
-const { initCurrency } = require("@ensuro/core/js/test-utils");
+const { _A, getRole } = require("@ensuro/utils/js/utils");
+const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const { encodeDummyStorage, dummyStorage } = require("./utils");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
@@ -8,9 +8,7 @@ const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const { ethers } = hre;
 const { ZeroAddress, MaxUint256 } = hre.ethers;
 
-const CURRENCY_DECIMALS = 6;
 const MAX_STRATEGIES = 32;
-const _A = amountFunction(CURRENCY_DECIMALS);
 const INITIAL = 10000;
 const NAME = "Multi Strategy Vault";
 const SYMB = "MSV";
@@ -18,7 +16,7 @@ const SYMB = "MSV";
 async function setUp() {
   const [, lp, lp2, anon, guardian, admin] = await ethers.getSigners();
   const currency = await initCurrency(
-    { name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(50000) },
+    { name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(50000), extraArgs: [admin] },
     [lp, lp2],
     [_A(INITIAL), _A(INITIAL)]
   );
@@ -236,8 +234,11 @@ describe("MultiStrategyERC4626 contract tests", function () {
     const vault = await deployVault(4, undefined, [3, 2, 1, 0], [2, 0, 3, 1]);
     await currency.connect(lp).approve(vault, MaxUint256);
 
-    await expect(vault.connect(lp).deposit(_A(100), lp)).to.be.revertedWith("ERC4626: deposit more than max");
-    await expect(vault.connect(lp).mint(_A(100), lp)).to.be.revertedWith("ERC4626: mint more than max");
+    await expect(vault.connect(lp).deposit(_A(100), lp)).to.be.revertedWithCustomError(
+      vault,
+      "ERC4626ExceededMaxDeposit"
+    );
+    await expect(vault.connect(lp).mint(_A(100), lp)).to.be.revertedWithCustomError(vault, "ERC4626ExceededMaxMint");
 
     await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
     await expect(vault.connect(lp).deposit(_A(100), lp)).not.to.be.reverted;
@@ -292,8 +293,9 @@ describe("MultiStrategyERC4626 contract tests", function () {
     // Check money went to strategy[3]
     expect(await currency.balanceOf(await strategies[3].other())).to.be.equal(_A(100));
 
-    await expect(vault.connect(lp2).rebalance(3, 1, _A(50))).to.be.revertedWith(
-      accessControlMessage(lp2, null, "REBALANCER_ROLE")
+    await expect(vault.connect(lp2).rebalance(3, 1, _A(50))).to.be.revertedWithCustomError(
+      vault,
+      "AccessControlUnauthorizedAccount"
     );
 
     await vault.connect(admin).grantRole(getRole("REBALANCER_ROLE"), lp2);
@@ -344,8 +346,9 @@ describe("MultiStrategyERC4626 contract tests", function () {
     expect(await vault.depositQueue()).to.deep.equal([2, 1, 3].concat(Array(MAX_STRATEGIES - 3).fill(0)));
     expect(await vault.withdrawQueue()).to.deep.equal([3, 1, 2].concat(Array(MAX_STRATEGIES - 3).fill(0)));
 
-    await expect(vault.connect(lp2).addStrategy(strategies[5], encodeDummyStorage({}))).to.be.revertedWith(
-      accessControlMessage(lp2, null, "STRATEGY_ADMIN_ROLE")
+    await expect(vault.connect(lp2).addStrategy(strategies[5], encodeDummyStorage({}))).to.be.revertedWithCustomError(
+      vault,
+      "AccessControlUnauthorizedAccount"
     );
 
     await vault.connect(admin).grantRole(getRole("STRATEGY_ADMIN_ROLE"), lp2);
@@ -412,8 +415,9 @@ describe("MultiStrategyERC4626 contract tests", function () {
     // Check money went to strategy[3]
     expect(await currency.balanceOf(await strategies[1].other())).to.be.equal(_A(100));
 
-    await expect(vault.connect(lp2).removeStrategy(0, false)).to.be.revertedWith(
-      accessControlMessage(lp2, null, "STRATEGY_ADMIN_ROLE")
+    await expect(vault.connect(lp2).removeStrategy(0, false)).to.be.revertedWithCustomError(
+      vault,
+      "AccessControlUnauthorizedAccount"
     );
 
     await vault.connect(admin).grantRole(getRole("STRATEGY_ADMIN_ROLE"), lp2);
@@ -488,8 +492,9 @@ describe("MultiStrategyERC4626 contract tests", function () {
     const vault = await deployVault(3, undefined, [1, 0, 2], [2, 0, 1]);
     expect(await vault.depositQueue()).to.deep.equal([2, 1, 3].concat(Array(MAX_STRATEGIES - 3).fill(0)));
 
-    await expect(vault.connect(lp2).changeDepositQueue([0, 1, 2])).to.be.revertedWith(
-      accessControlMessage(lp2, null, "QUEUE_ADMIN_ROLE")
+    await expect(vault.connect(lp2).changeDepositQueue([0, 1, 2])).to.be.revertedWithCustomError(
+      vault,
+      "AccessControlUnauthorizedAccount"
     );
     await vault.connect(admin).grantRole(getRole("QUEUE_ADMIN_ROLE"), lp2);
 
@@ -524,8 +529,9 @@ describe("MultiStrategyERC4626 contract tests", function () {
     const vault = await deployVault(3, undefined, [1, 0, 2], [2, 0, 1]);
     expect(await vault.withdrawQueue()).to.deep.equal([3, 1, 2].concat(Array(MAX_STRATEGIES - 3).fill(0)));
 
-    await expect(vault.connect(lp2).changeWithdrawQueue([0, 1, 2])).to.be.revertedWith(
-      accessControlMessage(lp2, null, "QUEUE_ADMIN_ROLE")
+    await expect(vault.connect(lp2).changeWithdrawQueue([0, 1, 2])).to.be.revertedWithCustomError(
+      vault,
+      "AccessControlUnauthorizedAccount"
     );
     await vault.connect(admin).grantRole(getRole("QUEUE_ADMIN_ROLE"), lp2);
 
@@ -564,7 +570,7 @@ describe("MultiStrategyERC4626 contract tests", function () {
 
     await expect(
       vault.connect(lp2).replaceStrategy(0, strategies[5], encodeDummyStorage({}), false)
-    ).to.be.revertedWith(accessControlMessage(lp2, null, "STRATEGY_ADMIN_ROLE"));
+    ).to.be.revertedWithCustomError(vault, "AccessControlUnauthorizedAccount");
 
     await vault.connect(admin).grantRole(getRole("STRATEGY_ADMIN_ROLE"), lp2);
 
@@ -632,10 +638,10 @@ describe("MultiStrategyERC4626 contract tests", function () {
   });
 
   it("Initialization fails if any strategy and vault have different assets", async () => {
-    const { MultiStrategyERC4626, DummyInvestStrategy, adminAddr, currency } = await helpers.loadFixture(setUp);
+    const { MultiStrategyERC4626, DummyInvestStrategy, adminAddr, currency, admin } = await helpers.loadFixture(setUp);
 
     const differentCurrency = await initCurrency(
-      { name: "Different USDC", symbol: "DUSDC", decimals: 6, initial_supply: _A(50000) },
+      { name: "Different USDC", symbol: "DUSDC", decimals: 6, initial_supply: _A(50000), extraArgs: [admin] },
       []
     );
 
@@ -667,7 +673,7 @@ describe("MultiStrategyERC4626 contract tests", function () {
     const vault = await deployVault(3, undefined, [0, 1, 2], [0, 1, 2]);
 
     const differentCurrency = await initCurrency(
-      { name: "Different USDC", symbol: "DUSDC", decimals: 6, initial_supply: _A(50000) },
+      { name: "Different USDC", symbol: "DUSDC", decimals: 6, initial_supply: _A(50000), extraArgs: [admin] },
       []
     );
 
@@ -687,7 +693,7 @@ describe("MultiStrategyERC4626 contract tests", function () {
     const vault = await deployVault(3, undefined, [0, 1, 2], [0, 1, 2]);
 
     const differentCurrency = await initCurrency(
-      { name: "Different USDC", symbol: "DUSDC", decimals: 6, initial_supply: _A(50000) },
+      { name: "Different USDC", symbol: "DUSDC", decimals: 6, initial_supply: _A(50000), extraArgs: [admin] },
       []
     );
 
