@@ -6,10 +6,6 @@ const hretry = require("@ensuro/utils/js/hardhat-retry");
 
 hretry.installWrapper();
 
-const { installWrapper } = require("./test/hardhat-retry");
-
-installWrapper();
-
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
   solidity: {
