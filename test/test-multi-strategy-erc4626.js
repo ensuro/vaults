@@ -360,10 +360,7 @@ variants.forEach((variant) => {
       // Check money went to strategy[3]
       expect(await currency.balanceOf(await strategies[3].other())).to.be.equal(_A(100));
 
-      await expect(vault.connect(lp2).rebalance(3, 1, _A(50))).to.be.revertedWithCustomError(
-        vault,
-        "AccessControlUnauthorizedAccount"
-      );
+      await expect(vault.connect(lp2).rebalance(3, 1, _A(50))).to.be.revertedWithACError(vault, lp2, "REBALANCER_ROLE");
 
       await vault.connect(admin).grantRole(getRole("REBALANCER_ROLE"), lp2);
 
@@ -413,9 +410,10 @@ variants.forEach((variant) => {
       expect(await vault.depositQueue()).to.deep.equal([2, 1, 3].concat(Array(MAX_STRATEGIES - 3).fill(0)));
       expect(await vault.withdrawQueue()).to.deep.equal([3, 1, 2].concat(Array(MAX_STRATEGIES - 3).fill(0)));
 
-      await expect(vault.connect(lp2).addStrategy(strategies[5], encodeDummyStorage({}))).to.be.revertedWithCustomError(
+      await expect(vault.connect(lp2).addStrategy(strategies[5], encodeDummyStorage({}))).to.be.revertedWithACError(
         vault,
-        "AccessControlUnauthorizedAccount"
+        lp2,
+        "STRATEGY_ADMIN_ROLE"
       );
 
       await vault.connect(admin).grantRole(getRole("STRATEGY_ADMIN_ROLE"), lp2);
@@ -484,9 +482,10 @@ variants.forEach((variant) => {
       // Check money went to strategy[3]
       expect(await currency.balanceOf(await strategies[1].other())).to.be.equal(_A(100));
 
-      await expect(vault.connect(lp2).removeStrategy(0, false)).to.be.revertedWithCustomError(
+      await expect(vault.connect(lp2).removeStrategy(0, false)).to.be.revertedWithACError(
         vault,
-        "AccessControlUnauthorizedAccount"
+        lp2,
+        "STRATEGY_ADMIN_ROLE"
       );
 
       await vault.connect(admin).grantRole(getRole("STRATEGY_ADMIN_ROLE"), lp2);
@@ -564,9 +563,10 @@ variants.forEach((variant) => {
       const vault = await deployVault(3, undefined, [1, 0, 2], [2, 0, 1]);
       expect(await vault.depositQueue()).to.deep.equal([2, 1, 3].concat(Array(MAX_STRATEGIES - 3).fill(0)));
 
-      await expect(vault.connect(lp2).changeDepositQueue([0, 1, 2])).to.be.revertedWithCustomError(
+      await expect(vault.connect(lp2).changeDepositQueue([0, 1, 2])).to.be.revertedWithACError(
         vault,
-        "AccessControlUnauthorizedAccount"
+        lp2,
+        "QUEUE_ADMIN_ROLE"
       );
       await vault.connect(admin).grantRole(getRole("QUEUE_ADMIN_ROLE"), lp2);
 
@@ -604,9 +604,10 @@ variants.forEach((variant) => {
       const vault = await deployVault(3, undefined, [1, 0, 2], [2, 0, 1]);
       expect(await vault.withdrawQueue()).to.deep.equal([3, 1, 2].concat(Array(MAX_STRATEGIES - 3).fill(0)));
 
-      await expect(vault.connect(lp2).changeWithdrawQueue([0, 1, 2])).to.be.revertedWithCustomError(
+      await expect(vault.connect(lp2).changeWithdrawQueue([0, 1, 2])).to.be.revertedWithACError(
         vault,
-        "AccessControlUnauthorizedAccount"
+        lp2,
+        "QUEUE_ADMIN_ROLE"
       );
       await vault.connect(admin).grantRole(getRole("QUEUE_ADMIN_ROLE"), lp2);
 
@@ -645,7 +646,7 @@ variants.forEach((variant) => {
 
       await expect(
         vault.connect(lp2).replaceStrategy(0, strategies[5], encodeDummyStorage({}), false)
-      ).to.be.revertedWithCustomError(vault, "AccessControlUnauthorizedAccount");
+      ).to.be.revertedWithACError(vault, lp2, "STRATEGY_ADMIN_ROLE");
 
       await vault.connect(admin).grantRole(getRole("STRATEGY_ADMIN_ROLE"), lp2);
 
@@ -858,10 +859,7 @@ variants.forEach((variant) => {
       // Check money went to strategy[3]
       expect(await currency.balanceOf(await strategies[3].other())).to.be.equal(_A(100));
 
-      await expect(vault.connect(lp2).rebalance(3, 1, _A(50))).to.be.revertedWithCustomError(
-        vault,
-        "AccessControlUnauthorizedAccount"
-      );
+      await expect(vault.connect(lp2).rebalance(3, 1, _A(50))).to.be.revertedWithACError(vault, lp2, "REBALANCER_ROLE");
 
       await vault.connect(admin).grantRole(getRole("REBALANCER_ROLE"), lp2);
 
@@ -911,9 +909,10 @@ variants.forEach((variant) => {
       expect(await vault.depositQueue()).to.deep.equal([2, 1, 3].concat(Array(MAX_STRATEGIES - 3).fill(0)));
       expect(await vault.withdrawQueue()).to.deep.equal([3, 1, 2].concat(Array(MAX_STRATEGIES - 3).fill(0)));
 
-      await expect(vault.connect(lp2).addStrategy(strategies[5], encodeDummyStorage({}))).to.be.revertedWithCustomError(
+      await expect(vault.connect(lp2).addStrategy(strategies[5], encodeDummyStorage({}))).to.be.revertedWithACError(
         vault,
-        "AccessControlUnauthorizedAccount"
+        lp2,
+        "STRATEGY_ADMIN_ROLE"
       );
 
       await vault.connect(admin).grantRole(getRole("STRATEGY_ADMIN_ROLE"), lp2);
@@ -982,9 +981,10 @@ variants.forEach((variant) => {
       // Check money went to strategy[3]
       expect(await currency.balanceOf(await strategies[1].other())).to.be.equal(_A(100));
 
-      await expect(vault.connect(lp2).removeStrategy(0, false)).to.be.revertedWithCustomError(
+      await expect(vault.connect(lp2).removeStrategy(0, false)).to.be.revertedWithACError(
         vault,
-        "AccessControlUnauthorizedAccount"
+        lp2,
+        "STRATEGY_ADMIN_ROLE"
       );
 
       await vault.connect(admin).grantRole(getRole("STRATEGY_ADMIN_ROLE"), lp2);
@@ -1062,9 +1062,10 @@ variants.forEach((variant) => {
       const vault = await deployVault(3, undefined, [1, 0, 2], [2, 0, 1]);
       expect(await vault.depositQueue()).to.deep.equal([2, 1, 3].concat(Array(MAX_STRATEGIES - 3).fill(0)));
 
-      await expect(vault.connect(lp2).changeDepositQueue([0, 1, 2])).to.be.revertedWithCustomError(
+      await expect(vault.connect(lp2).changeDepositQueue([0, 1, 2])).to.be.revertedWithACError(
         vault,
-        "AccessControlUnauthorizedAccount"
+        lp2,
+        "QUEUE_ADMIN_ROLE"
       );
       await vault.connect(admin).grantRole(getRole("QUEUE_ADMIN_ROLE"), lp2);
 
@@ -1102,9 +1103,10 @@ variants.forEach((variant) => {
       const vault = await deployVault(3, undefined, [1, 0, 2], [2, 0, 1]);
       expect(await vault.withdrawQueue()).to.deep.equal([3, 1, 2].concat(Array(MAX_STRATEGIES - 3).fill(0)));
 
-      await expect(vault.connect(lp2).changeWithdrawQueue([0, 1, 2])).to.be.revertedWithCustomError(
+      await expect(vault.connect(lp2).changeWithdrawQueue([0, 1, 2])).to.be.revertedWithACError(
         vault,
-        "AccessControlUnauthorizedAccount"
+        lp2,
+        "QUEUE_ADMIN_ROLE"
       );
       await vault.connect(admin).grantRole(getRole("QUEUE_ADMIN_ROLE"), lp2);
 
@@ -1143,7 +1145,7 @@ variants.forEach((variant) => {
 
       await expect(
         vault.connect(lp2).replaceStrategy(0, strategies[5], encodeDummyStorage({}), false)
-      ).to.be.revertedWithCustomError(vault, "AccessControlUnauthorizedAccount");
+      ).to.be.revertedWithACError(vault, lp2, "STRATEGY_ADMIN_ROLE");
 
       await vault.connect(admin).grantRole(getRole("STRATEGY_ADMIN_ROLE"), lp2);
 
