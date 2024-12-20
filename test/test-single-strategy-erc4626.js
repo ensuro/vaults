@@ -223,7 +223,7 @@ describe("SingleStrategyERC4626 contract tests", function () {
 
     await expect(
       vault.connect(guardian).setRoleAdmin(getRole("LP_ROLE"), getRole("LP_ROLE_ADMIN"))
-    ).to.be.revertedWithACError(vault, guardian, "LP_ROLE");
+    ).to.be.revertedWithACError(vault, guardian, "DEFAULT_ADMIN_ROLE");
 
     await expect(vault.connect(admin).setRoleAdmin(getRole("LP_ROLE"), getRole("LP_ROLE_ADMIN")))
       .to.emit(vault, "RoleAdminChanged")
@@ -232,7 +232,7 @@ describe("SingleStrategyERC4626 contract tests", function () {
     await expect(vault.connect(admin).grantRole(getRole("LP_ROLE"), guardian)).to.be.revertedWithACError(
       vault,
       admin,
-      "LP_ROLE"
+      "LP_ROLE_ADMIN"
     );
 
     await vault.connect(admin).grantRole(getRole("LP_ROLE_ADMIN"), guardian);

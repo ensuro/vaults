@@ -81,9 +81,29 @@ contract LimitOutflowModifier is Proxy {
     emit LimitChanged(slotSize, limit);
   }
 
+  // solhint-disable-next-line func-name-mixedcase
+  function LOM__getSlotSize() external view returns (uint256) {
+    return _getLOMStorage().slotSize;
+  }
+
+  // solhint-disable-next-line func-name-mixedcase
+  function LOM__getLimit() external view returns (uint256) {
+    return _getLOMStorage().limit;
+  }
+
+  // solhint-disable-next-line func-name-mixedcase
+  function LOM__getAssetsDelta(SlotIndex slot) external view returns (int256) {
+    return _getLOMStorage().assetsDelta[slot];
+  }
+
+  // solhint-disable-next-line func-name-mixedcase
+  function LOM__makeSlot(uint256 slotSize, uint40 timestamp) external pure returns (SlotIndex) {
+    return SlotIndex.wrap((slotSize << 128) + timestamp / slotSize);
+  }
+
   /**
-   * @dev Manually sets the delta in a given slot. Used to exceptionally allow or disallow limits different than the
-   *      configured ones.
+   * @dev Manually changes the delta in a given slot. Used to exceptionally allow or disallow limits different than
+   *      the configured ones or to reset the limit when a valid operation is verified.
    *
    * @notice This method doesn't have built-in access control. The access control validation is supposed to be
    *         implemented by the proxy. But this SHOULDN'T be publicly available.
@@ -93,9 +113,9 @@ contract LimitOutflowModifier is Proxy {
    * @param newDelta The delta in assets to store in a given slot
    */
   // solhint-disable-next-line func-name-mixedcase
-  function LOM__resetDelta(SlotIndex slot, int256 newDelta) external {
+  function LOM__changeDelta(SlotIndex slot, int256 deltaChange) external returns (int256 newDelta) {
     int256 oldDelta = _getLOMStorage().assetsDelta[slot];
-    _getLOMStorage().assetsDelta[slot] = newDelta;
+    newDelta = _getLOMStorage().assetsDelta[slot] += deltaChange;
     emit DeltaManuallySet(slot, oldDelta, newDelta);
   }
 
