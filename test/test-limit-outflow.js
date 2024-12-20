@@ -329,12 +329,11 @@ describe("LOM-MSERC4626 contract tests", function () {
 
     await expect(vault.connect(lp).redeem(_A(300), lp, lp)).not.to.be.reverted;
     expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.closeTo(_A(-450), 1n);
-    await expect(vault.connect(lp).redeem(_A(400), lp, lp)).not.to.be.reverted;
-    await expect(vault.connect(lp).redeem(_A(299), lp, lp)).not.to.be.reverted;
-    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(_A(-999));
+    await expect(vault.connect(lp).redeem(_A(400), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+    await expect(vault.connect(lp).redeem(_A(200), lp, lp)).not.to.be.reverted;
+    await expect(vault.connect(lp).redeem(_A(166), lp, lp)).not.to.be.reverted;
+    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.closeTo(_A(-999), 1n);
 
-    await expect(vault.connect(lp).redeem(_A(1), lp, lp)).not.to.be.reverted;
-    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(_A(-1000));
     await expect(vault.connect(lp).redeem(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
 
     // This fails because the limit extends for TWO slots
@@ -342,11 +341,96 @@ describe("LOM-MSERC4626 contract tests", function () {
     await expect(vault.connect(lp).redeem(_A(500), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
     await expect(vault.connect(lp).redeem(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
 
+    now = await helpers.time.latest();
+    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.closeTo(_A(0), 1n);
+
     await helpers.time.increase(DAY);
+    now = await helpers.time.latest();
 
     await expect(vault.connect(lp).redeem(_A(500), lp, lp)).not.to.be.reverted;
-    await expect(vault.connect(lp).redeem(_A(499), lp, lp)).not.to.be.reverted;
+    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(_A(-750));
+    await expect(vault.connect(lp).redeem(_A(165), lp, lp)).not.to.be.reverted;
+    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.closeTo(_A(-997.5), 1n);
     await expect(vault.connect(lp).redeem(_A(1), lp, lp)).not.to.be.reverted;
+    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.closeTo(_A(-999), 1n);
+  });
+
+  it("Allows accumulated withdrawals up to the daily limit and prevents exceeding it - mint/redeem/deposit/withdraw", async () => {
+    const { deployVault, lp, currency, admin, strategies } = await helpers.loadFixture(setUp);
+    const { vault, lom } = await deployVault(4, undefined, [3, 2, 1, 0], [2, 0, 3, 1]);
+
+    await currency.connect(lp).approve(vault, MaxUint256);
+    await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
+
+    const slotSize = DAY;
+    let now = await helpers.time.latest();
+    await expect(vault.connect(lp).deposit(_A(3000), lp)).not.to.be.reverted;
+    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(_A(3000));
+
+    await helpers.time.increase(DAY * 15);
+
+    now = await helpers.time.latest();
+
+    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(0);
+    // Mixing withdraws and redeems when ratio is 1 share = 1 asset
+    await expect(vault.connect(lp).redeem(_A(300), lp, lp)).not.to.be.reverted;
+    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(_A(-300));
+    await expect(vault.connect(lp).withdraw(_A(400), lp, lp)).not.to.be.reverted;
+    await expect(vault.connect(lp).redeem(_A(299), lp, lp)).not.to.be.reverted;
+    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(_A(-999));
+
+    await expect(vault.connect(lp).withdraw(_A(1), lp, lp)).not.to.be.reverted;
+    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(_A(-1000));
+    await expect(vault.connect(lp).withdraw(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+
+    await expect(vault.connect(lp).mint(_A(3000), lp)).not.to.be.reverted;
+    // Minted _A(3000), actual slot is _A(3000) + (_A(-1000)) = _A(2000)
+    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(_A(2000));
+    await currency.connect(lp).transfer(await strategies[0].other(), _A(2500)); // Give 2500 for free to the vault, now 1 share = 1.5 assets
+
+    await helpers.time.increase(DAY * 7);
+
+    now = await helpers.time.latest();
+
+    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(0);
+
+    await expect(vault.connect(lp).redeem(_A(300), lp, lp)).not.to.be.reverted;
+    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.closeTo(_A(-450), 1n);
+    await expect(vault.connect(lp).redeem(_A(400), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+    await expect(vault.connect(lp).withdraw(_A(549), lp, lp)).not.to.be.reverted;
+    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.closeTo(_A(-999), 1n);
+    await expect(vault.connect(lp).withdraw(_A(1), lp, lp)).not.to.be.reverted;
+
+    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.closeTo(_A(-1000), 1n);
+    await expect(vault.connect(lp).withdraw(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+    await expect(vault.connect(lp).redeem(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+
+    // This fails because the limit extends for TWO slots
+    await helpers.time.increase(DAY);
+    await expect(vault.connect(lp).redeem(_A(500), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+    await expect(vault.connect(lp).redeem(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+    await expect(vault.connect(lp).withdraw(_A(500), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+    await expect(vault.connect(lp).withdraw(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+
+    await helpers.time.increase(DAY);
+
+    now = await helpers.time.latest();
+
+    await expect(vault.connect(lp).withdraw(_A(300), lp, lp)).not.to.be.reverted;
+    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(_A(-300));
+    await expect(vault.connect(lp).redeem(_A(500), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+    await expect(vault.connect(lp).redeem(_A(300), lp, lp)).not.to.be.reverted;
+
+    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.closeTo(_A(-750), 1n);
+
+    await expect(vault.connect(lp).withdraw(_A(249), lp, lp)).not.to.be.reverted;
+    await expect(vault.connect(lp).redeem(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+
+    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.closeTo(_A(-999), 1n);
+
+    await expect(vault.connect(lp).withdraw(_A(1), lp, lp)).not.to.be.reverted;
+
+    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.closeTo(_A(-1000), 1n);
   });
 
   it("Sets and resets delta using LOM__changeDelta correctly", async () => {
