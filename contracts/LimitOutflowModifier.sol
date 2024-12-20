@@ -163,6 +163,8 @@ contract LimitOutflowModifier is Proxy {
         int256 deltaLastTwoSlots = assetsDelta +
           _getLOMStorage().assetsDelta[slot] +
           _getLOMStorage().assetsDelta[prevSlot];
+        // To check the limit, uses TWO slots, the current one and the previous one. This is to avoid someone doing
+        // several operations in the slot limit, like withdrawal at 11:59PM and another withdrawal at 12:01 AM.
         if (deltaLastTwoSlots < 0 && uint256(-deltaLastTwoSlots) > _getLOMStorage().limit)
           revert LimitReached(deltaLastTwoSlots, _getLOMStorage().limit);
       }

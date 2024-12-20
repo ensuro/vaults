@@ -307,6 +307,48 @@ describe("LOM-MSERC4626 contract tests", function () {
     await expect(vault.connect(lp).withdraw(_A(1), lp, lp)).not.to.be.reverted;
   });
 
+  it("Allows accumulated withdrawals up to the daily limit and prevents exceeding it - mint/redeem", async () => {
+    const { deployVault, lp, currency, admin, strategies } = await helpers.loadFixture(setUp);
+    const { vault, lom } = await deployVault(4, undefined, [3, 2, 1, 0], [2, 0, 3, 1]);
+
+    await currency.connect(lp).approve(vault, MaxUint256);
+    await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
+
+    const slotSize = DAY;
+    let now = await helpers.time.latest();
+    await expect(vault.connect(lp).mint(_A(5000), lp)).not.to.be.reverted;
+    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(_A(5000));
+
+    await currency.connect(lp).transfer(await strategies[0].other(), _A(2500)); // Give 2500 for free to the vault, now 1 share = 1.5 assets
+
+    await helpers.time.increase(DAY * 15);
+
+    now = await helpers.time.latest();
+
+    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(0);
+
+    await expect(vault.connect(lp).redeem(_A(300), lp, lp)).not.to.be.reverted;
+    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.closeTo(_A(-450), 1n);
+    await expect(vault.connect(lp).redeem(_A(400), lp, lp)).not.to.be.reverted;
+    await expect(vault.connect(lp).redeem(_A(299), lp, lp)).not.to.be.reverted;
+    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(_A(-999));
+
+    await expect(vault.connect(lp).redeem(_A(1), lp, lp)).not.to.be.reverted;
+    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(_A(-1000));
+    await expect(vault.connect(lp).redeem(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+
+    // This fails because the limit extends for TWO slots
+    await helpers.time.increase(DAY);
+    await expect(vault.connect(lp).redeem(_A(500), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+    await expect(vault.connect(lp).redeem(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+
+    await helpers.time.increase(DAY);
+
+    await expect(vault.connect(lp).redeem(_A(500), lp, lp)).not.to.be.reverted;
+    await expect(vault.connect(lp).redeem(_A(499), lp, lp)).not.to.be.reverted;
+    await expect(vault.connect(lp).redeem(_A(1), lp, lp)).not.to.be.reverted;
+  });
+
   it("Sets and resets delta using LOM__changeDelta correctly", async () => {
     const { deployVault, admin } = await helpers.loadFixture(setUp);
 
