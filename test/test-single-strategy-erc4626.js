@@ -145,9 +145,11 @@ describe("SingleStrategyERC4626 contract tests", function () {
   it("If disconnect fails it can't change the strategy unless forced", async () => {
     const { vault, strategy, admin, anon } = await helpers.loadFixture(setUp);
     await expect(vault.forwardToStrategy(0, encodeDummyStorage({ failDisconnect: true }))).not.to.be.reverted;
-    await expect(
-      vault.connect(anon).setStrategy(strategy, encodeDummyStorage({}), false)
-    ).to.be.revertedWithCustomError(vault, "AccessControlUnauthorizedAccount");
+    await expect(vault.connect(anon).setStrategy(strategy, encodeDummyStorage({}), false)).to.be.revertedWithACError(
+      vault,
+      anon,
+      "SET_STRATEGY_ROLE"
+    );
     await vault.connect(admin).grantRole(getRole("SET_STRATEGY_ROLE"), anon);
     await expect(vault.connect(anon).setStrategy(strategy, encodeDummyStorage({}), false))
       .to.be.revertedWithCustomError(strategy, "Fail")
@@ -208,9 +210,10 @@ describe("SingleStrategyERC4626 contract tests", function () {
     const { vault, admin, guardian, SingleStrategyERC4626 } = await helpers.loadFixture(setUp);
     const newImpl = await SingleStrategyERC4626.deploy();
 
-    await expect(vault.connect(admin).upgradeToAndCall(newImpl, "0x")).to.be.revertedWithCustomError(
+    await expect(vault.connect(admin).upgradeToAndCall(newImpl, "0x")).to.be.revertedWithACError(
       vault,
-      "AccessControlUnauthorizedAccount"
+      admin,
+      "GUARDIAN_ROLE"
     );
     await expect(vault.connect(guardian).upgradeToAndCall(newImpl, "0x")).to.emit(vault, "Upgraded");
   });
@@ -220,15 +223,16 @@ describe("SingleStrategyERC4626 contract tests", function () {
 
     await expect(
       vault.connect(guardian).setRoleAdmin(getRole("LP_ROLE"), getRole("LP_ROLE_ADMIN"))
-    ).to.be.revertedWithCustomError(vault, "AccessControlUnauthorizedAccount");
+    ).to.be.revertedWithACError(vault, guardian, "DEFAULT_ADMIN_ROLE");
 
     await expect(vault.connect(admin).setRoleAdmin(getRole("LP_ROLE"), getRole("LP_ROLE_ADMIN")))
       .to.emit(vault, "RoleAdminChanged")
       .withArgs(getRole("LP_ROLE"), getRole("DEFAULT_ADMIN_ROLE"), getRole("LP_ROLE_ADMIN"));
 
-    await expect(vault.connect(admin).grantRole(getRole("LP_ROLE"), guardian)).to.be.revertedWithCustomError(
+    await expect(vault.connect(admin).grantRole(getRole("LP_ROLE"), guardian)).to.be.revertedWithACError(
       vault,
-      "AccessControlUnauthorizedAccount"
+      admin,
+      "LP_ROLE_ADMIN"
     );
 
     await vault.connect(admin).grantRole(getRole("LP_ROLE_ADMIN"), guardian);

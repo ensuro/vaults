@@ -319,7 +319,7 @@ variants.forEach((variant) => {
 
       await expect(
         vault.connect(anon).forwardToStrategy(SwapStableInvestStrategyMethods.setSwapConfig, newSwapConfigAsBytes)
-      ).to.be.revertedWithCustomError(strategy, "AccessControlUnauthorizedAccount");
+      ).to.be.revertedWithACError(strategy, anon, "SWAP_ADMIN_ROLE");
 
       await vault.connect(admin).grantRole(await getRole("SWAP_ADMIN_ROLE"), anon);
 
