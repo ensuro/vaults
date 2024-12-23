@@ -185,9 +185,7 @@ const variants = [
     },
     harvestRewards: async (vault, amount) => vault.harvestRewards(amount),
     accessControlCheck: async (action, user, role, contract) =>
-      expect(action)
-        .to.be.revertedWithCustomError(contract, "AccessControlUnauthorizedAccount")
-        .withArgs(user, getRole(role)),
+      expect(action).to.be.revertedWithACError(contract, user, role),
     getSwapConfig: async (vault) => vault.getSwapConfig(),
     setSwapConfig: async (vault, swapConfig) => vault.setSwapConfig(swapConfig),
   },
@@ -239,9 +237,7 @@ const variants = [
         ethers.AbiCoder.defaultAbiCoder().encode(["uint256"], [amount])
       ),
     accessControlCheck: async (action, user, role, contract) =>
-      expect(action)
-        .to.be.revertedWithCustomError(contract, "AccessControlUnauthorizedAccount")
-        .withArgs(user, getRole(role)),
+      expect(action).to.be.revertedWithACError(contract, user, role),
     getSwapConfig: async (vault, strategy) => strategy.getSwapConfig(vault),
     setSwapConfig: async (vault, swapConfig) =>
       vault.forwardToStrategy(CompoundV3StrategyMethods.setSwapConfig, encodeSwapConfig(swapConfig)),
@@ -287,9 +283,7 @@ const variants = [
     },
     harvestRewards: null,
     accessControlCheck: async (action, user, role, contract) =>
-      expect(action)
-        .to.be.revertedWithCustomError(contract, "AccessControlUnauthorizedAccount")
-        .withArgs(user, getRole(role)),
+      expect(action).to.be.revertedWithACError(contract, user, role),
     getSwapConfig: null,
     setSwapConfig: null,
   },
@@ -344,9 +338,7 @@ const variants = [
     },
     harvestRewards: null,
     accessControlCheck: async (action, user, role, contract) =>
-      expect(action)
-        .to.be.revertedWithCustomError(contract, "AccessControlUnauthorizedAccount")
-        .withArgs(user, getRole(role)),
+      expect(action).to.be.revertedWithACError(contract, user, role),
     getSwapConfig: async (vault, strategy) => strategy.getSwapConfig(vault),
     setSwapConfig: async (vault, swapConfig) =>
       vault.forwardToStrategy(SwapStableAaveV3InvestStrategyMethods.setSwapConfig, encodeSwapConfig(swapConfig)),
@@ -750,7 +742,7 @@ variants.forEach((variant) => {
 
       await expect(
         vault.connect(anon).setStrategy(ZeroAddress, encodeSwapConfig(swapConfig), false)
-      ).to.be.revertedWithCustomError(strategy, "AccessControlUnauthorizedAccount");
+      ).to.be.revertedWithACError(strategy, anon, "SET_STRATEGY_ROLE");
       await grantRole(hre, vault.connect(admin), "SET_STRATEGY_ROLE", anon);
 
       await expect(vault.connect(anon).setStrategy(ZeroAddress, encodeSwapConfig(swapConfig), false)).to.be.reverted;
@@ -849,7 +841,7 @@ variants.forEach((variant) => {
 
       await expect(
         vault.connect(anon).setStrategy(ZeroAddress, ethers.toUtf8Bytes(""), false)
-      ).to.be.revertedWithCustomError(strategy, "AccessControlUnauthorizedAccount");
+      ).to.be.revertedWithACError(strategy, anon, "SET_STRATEGY_ROLE");
       await grantRole(hre, vault.connect(admin), "SET_STRATEGY_ROLE", anon);
 
       await expect(vault.connect(anon).setStrategy(ZeroAddress, ethers.toUtf8Bytes(""), false)).to.be.reverted;
