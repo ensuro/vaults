@@ -4,10 +4,12 @@ pragma solidity ^0.8.0;
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {AccessManager} from "@openzeppelin/contracts/access/manager/AccessManager.sol";
 import {IAccessManager} from "@openzeppelin/contracts/access/manager/IAccessManager.sol";
-import {IAccessManaged} from "@openzeppelin/contracts/access/manager/IAccessManaged.sol";
 
 contract AccessManagedProxy is ERC1967Proxy {
   IAccessManager public immutable ACCESS_MANAGER;
+
+  // Error copied from IAccessManaged
+  error AccessManagedUnauthorized(address caller);
 
   constructor(
     address implementation,
@@ -25,7 +27,7 @@ contract AccessManagedProxy is ERC1967Proxy {
    */
   function _delegate(address implementation) internal virtual override {
     (bool immediate, ) = ACCESS_MANAGER.canCall(msg.sender, address(this), bytes4(msg.data[0:4]));
-    if (!immediate) revert IAccessManaged.AccessManagedUnauthorized(msg.sender);
+    if (!immediate) revert AccessManagedUnauthorized(msg.sender);
     super._delegate(implementation);
   }
 }

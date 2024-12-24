@@ -1,4 +1,5 @@
 const ethers = require("ethers");
+const { Assertion } = require("chai");
 
 function encodeSwapConfig(swapConfig) {
   return ethers.AbiCoder.defaultAbiCoder().encode(["tuple(uint8, uint256, bytes)"], [swapConfig]);
@@ -47,10 +48,23 @@ async function makeAllViewsPublic(acMgr, contract) {
   }
 }
 
+function mergeFragments(a, b) {
+  const fallback = a.find((f) => f.type === "fallback");
+  return a.concat(
+    b.filter((fragment) => fragment.type !== "constructor" && (fallback === undefined || fragment.type !== "fallback"))
+  );
+}
+
+// Install chai matchear for AccessManagedError
+Assertion.addMethod("revertedWithAMError", function (contract, user) {
+  return new Assertion(this._obj).to.be.revertedWithCustomError(contract, "AccessManagedUnauthorized").withArgs(user);
+});
+
 module.exports = {
   encodeDummyStorage,
   encodeSwapConfig,
   dummyStorage,
   tagit,
   makeAllViewsPublic,
+  mergeFragments,
 };
