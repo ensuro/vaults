@@ -89,14 +89,12 @@ contract AccessManagedMSV is MSVBase, UUPSUpgradeable, ERC4626Upgradeable {
   }
 
   /// @inheritdoc IERC4626
-  function maxDeposit(address owner) public view virtual override returns (uint256 ret) {
-    if (super.maxDeposit(owner) == 0) return 0;
+  function maxDeposit(address) public view virtual override returns (uint256 ret) {
     return _maxDepositable();
   }
 
   /// @inheritdoc IERC4626
-  function maxMint(address owner) public view virtual override returns (uint256) {
-    if (super.maxMint(owner) == 0) return 0;
+  function maxMint(address) public view virtual override returns (uint256) {
     uint256 maxDep = _maxDepositable();
     return maxDep == type(uint256).max ? type(uint256).max : _convertToShares(maxDep, Math.Rounding.Floor);
   }
