@@ -38,9 +38,19 @@ function tagit(testDescription, test, only = false) {
   if (!any) iit(testDescription, test);
 }
 
+async function makeAllViewsPublic(acMgr, contract) {
+  const PUBLIC_ROLE = await acMgr.PUBLIC_ROLE();
+  for (const fragment of contract.interface.fragments) {
+    if (fragment.type !== "function") continue;
+    if (fragment.stateMutability !== "pure" && fragment.stateMutability !== "view") continue;
+    await acMgr.setTargetFunctionRole(contract, [fragment.selector], PUBLIC_ROLE);
+  }
+}
+
 module.exports = {
   encodeDummyStorage,
   encodeSwapConfig,
   dummyStorage,
   tagit,
+  makeAllViewsPublic,
 };
