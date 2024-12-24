@@ -6,7 +6,6 @@ import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {ERC4626Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
-import {PermissionedERC4626} from "./PermissionedERC4626.sol";
 import {MSVBase} from "./MSVBase.sol";
 import {IInvestStrategy} from "./interfaces/IInvestStrategy.sol";
 
