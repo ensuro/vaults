@@ -2,7 +2,7 @@ const { expect } = require("chai");
 const { amountFunction, getRole } = require("@ensuro/utils/js/utils");
 const { WEEK, DAY } = require("@ensuro/utils/js/constants");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
-const { encodeDummyStorage } = require("./utils");
+const { encodeDummyStorage, tagit, makeAllViewsPublic } = require("./utils");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
@@ -34,51 +34,8 @@ async function setUp() {
   const MultiStrategyERC4626 = await ethers.getContractFactory("MultiStrategyERC4626");
   const LimitOutflowModifier = await ethers.getContractFactory("LimitOutflowModifier");
   const ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
-
-  async function deployVault(strategies_, initStrategyDatas, depositQueue, withdrawQueue) {
-    const msv = await MultiStrategyERC4626.deploy();
-
-    if (strategies_ === undefined) {
-      strategies_ = strategies;
-    } else if (typeof strategies_ == "number") {
-      strategies_ = strategies.slice(0, strategies_);
-    }
-    if (initStrategyDatas === undefined) {
-      initStrategyDatas = strategies_.map(() => encodeDummyStorage({}));
-    }
-    if (depositQueue === undefined) {
-      depositQueue = strategies_.map((_, i) => i);
-    }
-    if (withdrawQueue === undefined) {
-      withdrawQueue = strategies_.map((_, i) => i);
-    }
-
-    const initializeData = msv.interface.encodeFunctionData("initialize", [
-      NAME,
-      SYMB,
-      adminAddr,
-      await ethers.resolveAddress(currency),
-      await Promise.all(strategies_.map(ethers.resolveAddress)),
-      initStrategyDatas,
-      depositQueue,
-      withdrawQueue,
-    ]);
-
-    const lom = await LimitOutflowModifier.deploy(msv);
-    const proxy = await ERC1967Proxy.deploy(lom, initializeData);
-    const deploymentTransaction = proxy.deploymentTransaction();
-    const vault = await ethers.getContractAt("MultiStrategyERC4626", await ethers.resolveAddress(proxy));
-    vault.deploymentTransaction = () => deploymentTransaction;
-
-    // Use getContractAt instead of attach to avoid errors with emit assertions
-    const vaultAsLOM = await ethers.getContractAt("LimitOutflowModifier", await ethers.resolveAddress(proxy));
-    await vaultAsLOM.LOM__setLimit(DAY, _A(1000));
-
-    return {
-      vault,
-      lom: vaultAsLOM,
-    };
-  }
+  const AccessManagedProxy = await ethers.getContractFactory("AccessManagedProxy");
+  const AccessManagedMSV = await ethers.getContractFactory("AccessManagedMSV");
 
   return {
     currency,
@@ -89,366 +46,542 @@ async function setUp() {
     anon,
     guardian,
     admin,
-    deployVault,
+    MultiStrategyERC4626,
+    LimitOutflowModifier,
+    ERC1967Proxy,
+    AccessManagedProxy,
+    AccessManagedMSV,
   };
 }
 
-describe("LOM-MSERC4626 contract tests", function () {
-  it("Initializes the vault correctly", async () => {
-    const { deployVault, currency, strategies } = await helpers.loadFixture(setUp);
-    const { vault, lom } = await deployVault(1);
-    expect(await vault.name()).to.equal(NAME);
-    expect(await vault.symbol()).to.equal(SYMB);
-    expect(await vault.withdrawQueue()).to.deep.equal([1].concat(Array(MAX_STRATEGIES - 1).fill(0)));
-    expect(await vault.depositQueue()).to.deep.equal([1].concat(Array(MAX_STRATEGIES - 1).fill(0)));
-    expect(await vault.strategies()).to.deep.equal(
-      [await ethers.resolveAddress(strategies[0])].concat(Array(MAX_STRATEGIES - 1).fill(ZeroAddress))
-    );
-    expect(await vault.asset()).to.equal(currency);
-    expect(await vault.totalAssets()).to.equal(0);
-    expect(await lom.LOM__getLimit()).to.equal(_A(1000));
-  });
+const variants = [
+  {
+    name: "LOM+MultiStrategyERC4626",
+    tagit: tagit,
+    fixture: async () => {
+      const ret = await setUp();
+
+      const {
+        MultiStrategyERC4626,
+        ERC1967Proxy,
+        LimitOutflowModifier,
+        strategies,
+        adminAddr,
+        currency,
+        admin,
+        lp,
+        lp2,
+      } = ret;
+
+      async function deployVault(strategies_, initStrategyDatas, depositQueue, withdrawQueue) {
+        const msv = await MultiStrategyERC4626.deploy();
+
+        if (strategies_ === undefined) {
+          strategies_ = strategies;
+        } else if (typeof strategies_ == "number") {
+          strategies_ = strategies.slice(0, strategies_);
+        }
+        if (initStrategyDatas === undefined) {
+          initStrategyDatas = strategies_.map(() => encodeDummyStorage({}));
+        }
+        if (depositQueue === undefined) {
+          depositQueue = strategies_.map((_, i) => i);
+        }
+        if (withdrawQueue === undefined) {
+          withdrawQueue = strategies_.map((_, i) => i);
+        }
+
+        const initializeData = msv.interface.encodeFunctionData("initialize", [
+          NAME,
+          SYMB,
+          adminAddr,
+          await ethers.resolveAddress(currency),
+          await Promise.all(strategies_.map(ethers.resolveAddress)),
+          initStrategyDatas,
+          depositQueue,
+          withdrawQueue,
+        ]);
+
+        const lom = await LimitOutflowModifier.deploy(msv);
+        const proxy = await ERC1967Proxy.deploy(lom, initializeData);
+        const deploymentTransaction = proxy.deploymentTransaction();
+        const vault = await ethers.getContractAt("MultiStrategyERC4626", await ethers.resolveAddress(proxy));
+        vault.deploymentTransaction = () => deploymentTransaction;
+
+        // Use getContractAt instead of attach to avoid errors with emit assertions
+        const vaultAsLOM = await ethers.getContractAt("LimitOutflowModifier", await ethers.resolveAddress(proxy));
+        await vaultAsLOM.LOM__setLimit(DAY, _A(1000));
+
+        return {
+          vault,
+          lom: vaultAsLOM,
+        };
+      }
+
+      async function grantRole(vault, role, user) {
+        await vault.connect(admin).grantRole(getRole(role), user);
+      }
+
+      return {
+        deployVault,
+        grantRole,
+        ...ret,
+      };
+    },
+  },
+  {
+    name: "AccessManagedProxy+LOM+AccessManagedMSV",
+    tagit: tagit,
+    fixture: async () => {
+      const ret = await setUp();
+
+      const {
+        AccessManagedProxy,
+        AccessManagedMSV,
+        ERC1967Proxy,
+        LimitOutflowModifier,
+        strategies,
+        adminAddr,
+        currency,
+        admin,
+        lp,
+        lp2,
+      } = ret;
+      const AccessManager = await ethers.getContractFactory("AccessManager");
+      const acMgr = await AccessManager.deploy(admin);
+      const LP_ROLE = 1;
+      const LOM_ADMIN = 2;
+
+      async function deployVault(strategies_, initStrategyDatas, depositQueue, withdrawQueue) {
+        const msv = await AccessManagedMSV.deploy();
+
+        if (strategies_ === undefined) {
+          strategies_ = strategies;
+        } else if (typeof strategies_ == "number") {
+          strategies_ = strategies.slice(0, strategies_);
+        }
+        if (initStrategyDatas === undefined) {
+          initStrategyDatas = strategies_.map(() => encodeDummyStorage({}));
+        }
+        if (depositQueue === undefined) {
+          depositQueue = strategies_.map((_, i) => i);
+        }
+        if (withdrawQueue === undefined) {
+          withdrawQueue = strategies_.map((_, i) => i);
+        }
+
+        const initializeData = msv.interface.encodeFunctionData("initialize", [
+          NAME,
+          SYMB,
+          await ethers.resolveAddress(currency),
+          await Promise.all(strategies_.map(ethers.resolveAddress)),
+          initStrategyDatas,
+          depositQueue,
+          withdrawQueue,
+        ]);
+
+        const lom = await LimitOutflowModifier.deploy(msv);
+        const proxy = await AccessManagedProxy.deploy(lom, initializeData, acMgr);
+        const deploymentTransaction = proxy.deploymentTransaction();
+        const vault = await ethers.getContractAt("AccessManagedMSV", await ethers.resolveAddress(proxy));
+        vault.deploymentTransaction = () => deploymentTransaction;
+
+        await makeAllViewsPublic(acMgr.connect(admin), vault);
+
+        // Use getContractAt instead of attach to avoid errors with emit assertions
+        const vaultAsLOM = await ethers.getContractAt("LimitOutflowModifier", await ethers.resolveAddress(proxy));
+        await vaultAsLOM.connect(admin).LOM__setLimit(DAY, _A(1000));
+
+        await makeAllViewsPublic(acMgr.connect(admin), vaultAsLOM);
+
+        // Setup LP role
+        await acMgr.connect(admin).labelRole(LP_ROLE, "LP_ROLE");
+        for (const method of ["withdraw", "deposit", "mint", "redeem", "transfer"]) {
+          await acMgr
+            .connect(admin)
+            .setTargetFunctionRole(vault, [vault.interface.getFunction(method).selector], LP_ROLE);
+        }
+
+        return {
+          vault,
+          lom: vaultAsLOM,
+        };
+      }
+
+      async function grantRole(_, role, user) {
+        if (role === "LP_ROLE") role = LP_ROLE;
+        if (role === "LOM_ADMIN") role = LOM_ADMIN;
+        await acMgr.connect(admin).grantRole(role, user, 0);
+      }
+
+      return {
+        deployVault,
+        acMgr,
+        grantRole,
+        ...ret,
+      };
+    },
+  },
+];
+
+variants.forEach((variant) => {
+  describe(`${variant.name} contract tests`, function () {
+    it("Initializes the vault correctly", async () => {
+      const { deployVault, currency, strategies } = await helpers.loadFixture(variant.fixture);
+      const { vault, lom } = await deployVault(1);
+      expect(await vault.name()).to.equal(NAME);
+      expect(await vault.symbol()).to.equal(SYMB);
+      expect(await vault.withdrawQueue()).to.deep.equal([1].concat(Array(MAX_STRATEGIES - 1).fill(0)));
+      expect(await vault.depositQueue()).to.deep.equal([1].concat(Array(MAX_STRATEGIES - 1).fill(0)));
+      expect(await vault.strategies()).to.deep.equal(
+        [await ethers.resolveAddress(strategies[0])].concat(Array(MAX_STRATEGIES - 1).fill(ZeroAddress))
+      );
+      expect(await vault.asset()).to.equal(currency);
+      expect(await vault.totalAssets()).to.equal(0);
+      expect(await lom.LOM__getLimit()).to.equal(_A(1000));
+    });
 
-  it("Handles withdrawal limits correctly for multiple LPs and ensures limits are respected across time periods", async () => {
-    const { deployVault, lp, lp2, currency, admin } = await helpers.loadFixture(setUp);
-    const { vault, lom } = await deployVault(4, undefined, [3, 2, 1, 0], [2, 0, 3, 1]);
+    it("Handles withdrawal limits correctly for multiple LPs and ensures limits are respected across time periods", async () => {
+      const { deployVault, lp, lp2, currency, grantRole } = await helpers.loadFixture(variant.fixture);
+      const { vault, lom } = await deployVault(4, undefined, [3, 2, 1, 0], [2, 0, 3, 1]);
 
-    await currency.connect(lp).approve(vault, MaxUint256);
-    await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
+      await currency.connect(lp).approve(vault, MaxUint256);
+      await grantRole(vault, "LP_ROLE", lp);
 
-    await expect(vault.connect(lp).deposit(_A(5000), lp)).not.to.be.reverted;
-    await expect(vault.connect(lp).withdraw(_A(800), lp, lp)).not.to.be.reverted;
-    await expect(vault.connect(lp).withdraw(_A(300), lp, lp)).not.to.be.reverted;
+      await expect(vault.connect(lp).deposit(_A(5000), lp)).not.to.be.reverted;
+      await expect(vault.connect(lp).withdraw(_A(800), lp, lp)).not.to.be.reverted;
+      await expect(vault.connect(lp).withdraw(_A(300), lp, lp)).not.to.be.reverted;
 
-    // Limit happens before the underlying vault limits, so in this case fails with LimitReached even when
-    // it will fail anyway because lack of funds
-    await expect(vault.connect(lp).withdraw(_A(5600), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+      // Limit happens before the underlying vault limits, so in this case fails with LimitReached even when
+      // it will fail anyway because lack of funds
+      await expect(vault.connect(lp).withdraw(_A(5600), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
 
-    await currency.connect(lp2).approve(vault, MaxUint256);
-    await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp2);
+      await currency.connect(lp2).approve(vault, MaxUint256);
+      await grantRole(vault, "LP_ROLE", lp2);
 
-    await expect(vault.connect(lp2).deposit(_A(2000), lp2)).not.to.be.reverted;
-    await expect(vault.connect(lp2).withdraw(_A(400), lp2, lp2)).not.to.be.reverted;
+      await expect(vault.connect(lp2).deposit(_A(2000), lp2)).not.to.be.reverted;
+      await expect(vault.connect(lp2).withdraw(_A(400), lp2, lp2)).not.to.be.reverted;
 
-    await expect(vault.connect(lp2).withdraw(_A(6700), lp2, lp2)).to.be.revertedWithCustomError(lom, "LimitReached");
+      await expect(vault.connect(lp2).withdraw(_A(6700), lp2, lp2)).to.be.revertedWithCustomError(lom, "LimitReached");
 
-    await helpers.time.increase(WEEK);
+      await helpers.time.increase(WEEK);
 
-    // Balance Of and other methods work as always
-    expect(await vault.balanceOf(lp2)).to.equal(_A(1600));
-    expect(await vault.convertToAssets(vault.balanceOf(lp))).to.equal(_A(3900));
+      // Balance Of and other methods work as always
+      expect(await vault.balanceOf(lp2)).to.equal(_A(1600));
+      expect(await vault.convertToAssets(vault.balanceOf(lp))).to.equal(_A(3900));
 
-    await expect(vault.connect(lp).withdraw(_A(320), lp, lp)).not.to.be.reverted;
+      await expect(vault.connect(lp).withdraw(_A(320), lp, lp)).not.to.be.reverted;
 
-    await expect(vault.connect(lp2).withdraw(_A(680), lp2, lp2)).not.to.be.reverted;
+      await expect(vault.connect(lp2).withdraw(_A(680), lp2, lp2)).not.to.be.reverted;
 
-    await expect(vault.connect(lp).withdraw(_A(700), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
-    await expect(vault.connect(lp2).withdraw(_A(800), lp2, lp2)).to.be.revertedWithCustomError(lom, "LimitReached");
-  });
+      await expect(vault.connect(lp).withdraw(_A(700), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+      await expect(vault.connect(lp2).withdraw(_A(800), lp2, lp2)).to.be.revertedWithCustomError(lom, "LimitReached");
+    });
 
-  it("Respects withdrawal limits and resets daily limit after time advancement", async () => {
-    const { deployVault, lp, currency, admin } = await helpers.loadFixture(setUp);
-    const { vault, lom } = await deployVault(4, undefined, [3, 2, 1, 0], [2, 0, 3, 1]);
+    it("Respects withdrawal limits and resets daily limit after time advancement", async () => {
+      const { deployVault, lp, currency, grantRole } = await helpers.loadFixture(variant.fixture);
+      const { vault, lom } = await deployVault(4, undefined, [3, 2, 1, 0], [2, 0, 3, 1]);
 
-    await currency.connect(lp).approve(vault, MaxUint256);
-    await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
+      await currency.connect(lp).approve(vault, MaxUint256);
+      await grantRole(vault, "LP_ROLE", lp);
 
-    await expect(vault.connect(lp).deposit(_A(5000), lp)).not.to.be.reverted;
+      await expect(vault.connect(lp).deposit(_A(5000), lp)).not.to.be.reverted;
 
-    await helpers.time.increase(WEEK);
+      await helpers.time.increase(WEEK);
 
-    await expect(vault.connect(lp).withdraw(_A(100), lp, lp)).not.to.be.reverted;
+      await expect(vault.connect(lp).withdraw(_A(100), lp, lp)).not.to.be.reverted;
 
-    await expect(vault.connect(lp).withdraw(_A(970), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+      await expect(vault.connect(lp).withdraw(_A(970), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
 
-    await expect(vault.connect(lp).withdraw(_A(830), lp, lp)).not.to.be.reverted;
+      await expect(vault.connect(lp).withdraw(_A(830), lp, lp)).not.to.be.reverted;
 
-    await expect(vault.connect(lp).withdraw(_A(80), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+      await expect(vault.connect(lp).withdraw(_A(80), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
 
-    await helpers.time.increase(DAY);
+      await helpers.time.increase(DAY);
 
-    await expect(vault.connect(lp).withdraw(_A(80), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+      await expect(vault.connect(lp).withdraw(_A(80), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
 
-    await helpers.time.increase(DAY);
-    // After two times the time slot, the first day withdrawals disapear
+      await helpers.time.increase(DAY);
+      // After two times the time slot, the first day withdrawals disapear
 
-    await expect(vault.connect(lp).withdraw(_A(80), lp, lp)).not.to.be.reverted;
+      await expect(vault.connect(lp).withdraw(_A(80), lp, lp)).not.to.be.reverted;
 
-    await expect(vault.connect(lp).withdraw(_A(920), lp, lp)).not.to.be.reverted;
+      await expect(vault.connect(lp).withdraw(_A(920), lp, lp)).not.to.be.reverted;
 
-    await expect(vault.connect(lp).withdraw(_A(65), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
-  });
+      await expect(vault.connect(lp).withdraw(_A(65), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+    });
 
-  it("Prevents withdrawal when combined daily limits from consecutive slots are surpassed", async () => {
-    const { deployVault, lp, currency, admin } = await helpers.loadFixture(setUp);
-    const { vault, lom } = await deployVault(4, undefined, [3, 2, 1, 0], [2, 0, 3, 1]);
+    it("Prevents withdrawal when combined daily limits from consecutive slots are surpassed", async () => {
+      const { deployVault, lp, currency, grantRole } = await helpers.loadFixture(variant.fixture);
+      const { vault, lom } = await deployVault(4, undefined, [3, 2, 1, 0], [2, 0, 3, 1]);
 
-    await currency.connect(lp).approve(vault, MaxUint256);
-    await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
+      await currency.connect(lp).approve(vault, MaxUint256);
+      await grantRole(vault, "LP_ROLE", lp);
 
-    await expect(vault.connect(lp).deposit(_A(5000), lp)).not.to.be.reverted;
+      await expect(vault.connect(lp).deposit(_A(5000), lp)).not.to.be.reverted;
 
-    await helpers.time.increase(WEEK);
+      await helpers.time.increase(WEEK);
 
-    await expect(vault.connect(lp).withdraw(_A(1001), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
-    await expect(vault.connect(lp).withdraw(_A(1000), lp, lp)).not.to.be.reverted;
+      await expect(vault.connect(lp).withdraw(_A(1001), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+      await expect(vault.connect(lp).withdraw(_A(1000), lp, lp)).not.to.be.reverted;
 
-    await expect(vault.connect(lp).withdraw(_A(165), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+      await expect(vault.connect(lp).withdraw(_A(165), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
 
-    await helpers.time.increase(DAY);
+      await helpers.time.increase(DAY);
 
-    await expect(vault.connect(lp).withdraw(_A(165), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+      await expect(vault.connect(lp).withdraw(_A(165), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
 
-    await helpers.time.increase(DAY);
+      await helpers.time.increase(DAY);
 
-    await expect(vault.connect(lp).withdraw(_A(165), lp, lp)).not.to.be.reverted;
+      await expect(vault.connect(lp).withdraw(_A(165), lp, lp)).not.to.be.reverted;
 
-    await helpers.time.increase(DAY);
+      await helpers.time.increase(DAY);
 
-    await expect(vault.connect(lp).withdraw(_A(745), lp, lp)).not.to.be.reverted;
+      await expect(vault.connect(lp).withdraw(_A(745), lp, lp)).not.to.be.reverted;
 
-    await helpers.time.increase(DAY);
+      await helpers.time.increase(DAY);
 
-    await expect(vault.connect(lp).withdraw(_A(275), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+      await expect(vault.connect(lp).withdraw(_A(275), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
 
-    await expect(vault.connect(lp).withdraw(_A(255), lp, lp)).not.to.be.reverted;
-  });
+      await expect(vault.connect(lp).withdraw(_A(255), lp, lp)).not.to.be.reverted;
+    });
 
-  it("Prevents withdrawal for consecutive daily limits, but forgets two days ago withdrawals", async () => {
-    const { deployVault, lp, currency, admin } = await helpers.loadFixture(setUp);
-    const { vault, lom } = await deployVault(4, undefined, [3, 2, 1, 0], [2, 0, 3, 1]);
+    it("Prevents withdrawal for consecutive daily limits, but forgets two days ago withdrawals", async () => {
+      const { deployVault, lp, currency, grantRole } = await helpers.loadFixture(variant.fixture);
+      const { vault, lom } = await deployVault(4, undefined, [3, 2, 1, 0], [2, 0, 3, 1]);
 
-    await currency.connect(lp).approve(vault, MaxUint256);
-    await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
+      await currency.connect(lp).approve(vault, MaxUint256);
+      await grantRole(vault, "LP_ROLE", lp);
 
-    await expect(vault.connect(lp).deposit(_A(5000), lp)).not.to.be.reverted;
+      await expect(vault.connect(lp).deposit(_A(5000), lp)).not.to.be.reverted;
 
-    await helpers.time.increase(WEEK);
+      await helpers.time.increase(WEEK);
 
-    await expect(vault.connect(lp).withdraw(_A(400), lp, lp)).not.to.be.reverted;
-    await helpers.time.increase(DAY);
-    await expect(vault.connect(lp).withdraw(_A(800), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
-    await expect(vault.connect(lp).withdraw(_A(600), lp, lp)).not.to.be.reverted;
-    // Fails because it reached the limit in the last two days
-    await expect(vault.connect(lp).withdraw(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+      await expect(vault.connect(lp).withdraw(_A(400), lp, lp)).not.to.be.reverted;
+      await helpers.time.increase(DAY);
+      await expect(vault.connect(lp).withdraw(_A(800), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+      await expect(vault.connect(lp).withdraw(_A(600), lp, lp)).not.to.be.reverted;
+      // Fails because it reached the limit in the last two days
+      await expect(vault.connect(lp).withdraw(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
 
-    await helpers.time.increase(DAY);
-    await expect(vault.connect(lp).withdraw(_A(300), lp, lp)).not.to.be.reverted;
-    await expect(vault.connect(lp).withdraw(_A(100), lp, lp)).not.to.be.reverted;
-    await expect(vault.connect(lp).withdraw(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
-  });
+      await helpers.time.increase(DAY);
+      await expect(vault.connect(lp).withdraw(_A(300), lp, lp)).not.to.be.reverted;
+      await expect(vault.connect(lp).withdraw(_A(100), lp, lp)).not.to.be.reverted;
+      await expect(vault.connect(lp).withdraw(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+    });
 
-  it("Checks that change in slot size resets the limits", async () => {
-    const { deployVault, lp, currency, admin } = await helpers.loadFixture(setUp);
-    const { vault, lom } = await deployVault(4, undefined, [3, 2, 1, 0], [2, 0, 3, 1]);
+    it("Checks that change in slot size resets the limits", async () => {
+      const { deployVault, lp, currency, grantRole, admin } = await helpers.loadFixture(variant.fixture);
+      const { vault, lom } = await deployVault(4, undefined, [3, 2, 1, 0], [2, 0, 3, 1]);
 
-    await currency.connect(lp).approve(vault, MaxUint256);
-    await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
+      await currency.connect(lp).approve(vault, MaxUint256);
+      await grantRole(vault, "LP_ROLE", lp);
 
-    await expect(vault.connect(lp).deposit(_A(5000), lp)).not.to.be.reverted;
+      await expect(vault.connect(lp).deposit(_A(5000), lp)).not.to.be.reverted;
 
-    await helpers.time.increase(WEEK);
+      await helpers.time.increase(WEEK);
 
-    await expect(vault.connect(lp).withdraw(_A(400), lp, lp)).not.to.be.reverted;
-    await helpers.time.increase(DAY);
-    await expect(vault.connect(lp).withdraw(_A(600), lp, lp)).not.to.be.reverted;
-    // Fails because it reached the limit in the last two days
+      await expect(vault.connect(lp).withdraw(_A(400), lp, lp)).not.to.be.reverted;
+      await helpers.time.increase(DAY);
+      await expect(vault.connect(lp).withdraw(_A(600), lp, lp)).not.to.be.reverted;
+      // Fails because it reached the limit in the last two days
 
-    await expect(lom.LOM__setLimit(DAY / 2, _A(500)))
-      .to.emit(lom, "LimitChanged")
-      .withArgs(DAY / 2, _A(500));
-    expect(await lom.LOM__getLimit()).to.equal(_A(500));
-    expect(await lom.LOM__getSlotSize()).to.equal(DAY / 2);
-    // Changing the slotSize resets the limits, so now we can withdraw
-    await expect(vault.connect(lp).withdraw(_A(500), lp, lp)).not.to.be.reverted;
-    await expect(vault.connect(lp).withdraw(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
-    await helpers.time.increase(DAY / 2);
-    await expect(vault.connect(lp).withdraw(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
-    await helpers.time.increase(DAY / 2);
-    await expect(vault.connect(lp).withdraw(_A(5), lp, lp)).not.to.be.reverted;
-  });
+      await expect(lom.connect(admin).LOM__setLimit(DAY / 2, _A(500)))
+        .to.emit(lom, "LimitChanged")
+        .withArgs(DAY / 2, _A(500));
+      expect(await lom.LOM__getLimit()).to.equal(_A(500));
+      expect(await lom.LOM__getSlotSize()).to.equal(DAY / 2);
+      // Changing the slotSize resets the limits, so now we can withdraw
+      await expect(vault.connect(lp).withdraw(_A(500), lp, lp)).not.to.be.reverted;
+      await expect(vault.connect(lp).withdraw(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+      await helpers.time.increase(DAY / 2);
+      await expect(vault.connect(lp).withdraw(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+      await helpers.time.increase(DAY / 2);
+      await expect(vault.connect(lp).withdraw(_A(5), lp, lp)).not.to.be.reverted;
+    });
 
-  it("Allows accumulated withdrawals up to the daily limit and prevents exceeding it", async () => {
-    const { deployVault, lp, currency, admin } = await helpers.loadFixture(setUp);
-    const { vault, lom } = await deployVault(4, undefined, [3, 2, 1, 0], [2, 0, 3, 1]);
+    it("Allows accumulated withdrawals up to the daily limit and prevents exceeding it", async () => {
+      const { deployVault, lp, currency, grantRole } = await helpers.loadFixture(variant.fixture);
+      const { vault, lom } = await deployVault(4, undefined, [3, 2, 1, 0], [2, 0, 3, 1]);
 
-    await currency.connect(lp).approve(vault, MaxUint256);
-    await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
+      await currency.connect(lp).approve(vault, MaxUint256);
+      await grantRole(vault, "LP_ROLE", lp);
 
-    const slotSize = DAY;
-    let now = await helpers.time.latest();
-    await expect(vault.connect(lp).deposit(_A(5000), lp)).not.to.be.reverted;
-    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(_A(5000));
+      const slotSize = DAY;
+      let now = await helpers.time.latest();
+      await expect(vault.connect(lp).deposit(_A(5000), lp)).not.to.be.reverted;
+      expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(_A(5000));
 
-    await helpers.time.increase(DAY * 15);
+      await helpers.time.increase(DAY * 15);
 
-    now = await helpers.time.latest();
+      now = await helpers.time.latest();
 
-    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(0);
+      expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(0);
 
-    await expect(vault.connect(lp).withdraw(_A(300), lp, lp)).not.to.be.reverted;
-    await expect(vault.connect(lp).withdraw(_A(400), lp, lp)).not.to.be.reverted;
-    await expect(vault.connect(lp).withdraw(_A(299), lp, lp)).not.to.be.reverted;
-    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(_A(-999));
+      await expect(vault.connect(lp).withdraw(_A(300), lp, lp)).not.to.be.reverted;
+      await expect(vault.connect(lp).withdraw(_A(400), lp, lp)).not.to.be.reverted;
+      await expect(vault.connect(lp).withdraw(_A(299), lp, lp)).not.to.be.reverted;
+      expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(_A(-999));
 
-    await expect(vault.connect(lp).withdraw(_A(1), lp, lp)).not.to.be.reverted;
-    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(_A(-1000));
-    await expect(vault.connect(lp).withdraw(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+      await expect(vault.connect(lp).withdraw(_A(1), lp, lp)).not.to.be.reverted;
+      expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(_A(-1000));
+      await expect(vault.connect(lp).withdraw(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
 
-    // This fails because the limit extends for TWO slots
-    await helpers.time.increase(DAY);
-    await expect(vault.connect(lp).withdraw(_A(500), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
-    await expect(vault.connect(lp).withdraw(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+      // This fails because the limit extends for TWO slots
+      await helpers.time.increase(DAY);
+      await expect(vault.connect(lp).withdraw(_A(500), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+      await expect(vault.connect(lp).withdraw(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
 
-    await helpers.time.increase(DAY);
+      await helpers.time.increase(DAY);
 
-    await expect(vault.connect(lp).withdraw(_A(500), lp, lp)).not.to.be.reverted;
-    await expect(vault.connect(lp).withdraw(_A(499), lp, lp)).not.to.be.reverted;
-    await expect(vault.connect(lp).withdraw(_A(1), lp, lp)).not.to.be.reverted;
-  });
+      await expect(vault.connect(lp).withdraw(_A(500), lp, lp)).not.to.be.reverted;
+      await expect(vault.connect(lp).withdraw(_A(499), lp, lp)).not.to.be.reverted;
+      await expect(vault.connect(lp).withdraw(_A(1), lp, lp)).not.to.be.reverted;
+    });
 
-  it("Allows accumulated withdrawals up to the daily limit and prevents exceeding it - mint/redeem", async () => {
-    const { deployVault, lp, currency, admin, strategies } = await helpers.loadFixture(setUp);
-    const { vault, lom } = await deployVault(4, undefined, [3, 2, 1, 0], [2, 0, 3, 1]);
+    it("Allows accumulated withdrawals up to the daily limit and prevents exceeding it - mint/redeem", async () => {
+      const { deployVault, lp, currency, grantRole, strategies } = await helpers.loadFixture(variant.fixture);
+      const { vault, lom } = await deployVault(4, undefined, [3, 2, 1, 0], [2, 0, 3, 1]);
 
-    await currency.connect(lp).approve(vault, MaxUint256);
-    await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
+      await currency.connect(lp).approve(vault, MaxUint256);
+      await grantRole(vault, "LP_ROLE", lp);
 
-    const slotSize = DAY;
-    let now = await helpers.time.latest();
-    await expect(vault.connect(lp).mint(_A(5000), lp)).not.to.be.reverted;
-    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(_A(5000));
+      const slotSize = DAY;
+      let now = await helpers.time.latest();
+      await expect(vault.connect(lp).mint(_A(5000), lp)).not.to.be.reverted;
+      expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(_A(5000));
 
-    await currency.connect(lp).transfer(await strategies[0].other(), _A(2500)); // Give 2500 for free to the vault, now 1 share = 1.5 assets
+      await currency.connect(lp).transfer(await strategies[0].other(), _A(2500)); // Give 2500 for free to the vault, now 1 share = 1.5 assets
 
-    await helpers.time.increase(DAY * 15);
+      await helpers.time.increase(DAY * 15);
 
-    now = await helpers.time.latest();
+      now = await helpers.time.latest();
 
-    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(0);
+      expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(0);
 
-    await expect(vault.connect(lp).redeem(_A(300), lp, lp)).not.to.be.reverted;
-    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.closeTo(_A(-450), 1n);
-    await expect(vault.connect(lp).redeem(_A(400), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
-    await expect(vault.connect(lp).redeem(_A(200), lp, lp)).not.to.be.reverted;
-    await expect(vault.connect(lp).redeem(_A(166), lp, lp)).not.to.be.reverted;
-    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.closeTo(_A(-999), 1n);
+      await expect(vault.connect(lp).redeem(_A(300), lp, lp)).not.to.be.reverted;
+      expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.closeTo(_A(-450), 1n);
+      await expect(vault.connect(lp).redeem(_A(400), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+      await expect(vault.connect(lp).redeem(_A(200), lp, lp)).not.to.be.reverted;
+      await expect(vault.connect(lp).redeem(_A(166), lp, lp)).not.to.be.reverted;
+      expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.closeTo(_A(-999), 1n);
 
-    await expect(vault.connect(lp).redeem(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+      await expect(vault.connect(lp).redeem(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
 
-    // This fails because the limit extends for TWO slots
-    await helpers.time.increase(DAY);
-    await expect(vault.connect(lp).redeem(_A(500), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
-    await expect(vault.connect(lp).redeem(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+      // This fails because the limit extends for TWO slots
+      await helpers.time.increase(DAY);
+      await expect(vault.connect(lp).redeem(_A(500), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+      await expect(vault.connect(lp).redeem(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
 
-    now = await helpers.time.latest();
-    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.closeTo(_A(0), 1n);
+      now = await helpers.time.latest();
+      expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.closeTo(_A(0), 1n);
 
-    await helpers.time.increase(DAY);
-    now = await helpers.time.latest();
+      await helpers.time.increase(DAY);
+      now = await helpers.time.latest();
 
-    await expect(vault.connect(lp).redeem(_A(500), lp, lp)).not.to.be.reverted;
-    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(_A(-750));
-    await expect(vault.connect(lp).redeem(_A(165), lp, lp)).not.to.be.reverted;
-    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.closeTo(_A(-997.5), 1n);
-    await expect(vault.connect(lp).redeem(_A(1), lp, lp)).not.to.be.reverted;
-    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.closeTo(_A(-999), 1n);
-  });
+      await expect(vault.connect(lp).redeem(_A(500), lp, lp)).not.to.be.reverted;
+      expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(_A(-750));
+      await expect(vault.connect(lp).redeem(_A(165), lp, lp)).not.to.be.reverted;
+      expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.closeTo(_A(-997.5), 1n);
+      await expect(vault.connect(lp).redeem(_A(1), lp, lp)).not.to.be.reverted;
+      expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.closeTo(_A(-999), 1n);
+    });
 
-  it("Allows accumulated withdrawals up to the daily limit and prevents exceeding it - mint/redeem/deposit/withdraw", async () => {
-    const { deployVault, lp, currency, admin, strategies } = await helpers.loadFixture(setUp);
-    const { vault, lom } = await deployVault(4, undefined, [3, 2, 1, 0], [2, 0, 3, 1]);
+    it("Allows accumulated withdrawals up to the daily limit and prevents exceeding it - mint/redeem/deposit/withdraw", async () => {
+      const { deployVault, lp, currency, grantRole, strategies } = await helpers.loadFixture(variant.fixture);
+      const { vault, lom } = await deployVault(4, undefined, [3, 2, 1, 0], [2, 0, 3, 1]);
 
-    await currency.connect(lp).approve(vault, MaxUint256);
-    await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
+      await currency.connect(lp).approve(vault, MaxUint256);
+      await grantRole(vault, "LP_ROLE", lp);
 
-    const slotSize = DAY;
-    let now = await helpers.time.latest();
-    await expect(vault.connect(lp).deposit(_A(3000), lp)).not.to.be.reverted;
-    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(_A(3000));
+      const slotSize = DAY;
+      let now = await helpers.time.latest();
+      await expect(vault.connect(lp).deposit(_A(3000), lp)).not.to.be.reverted;
+      expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(_A(3000));
 
-    await helpers.time.increase(DAY * 15);
+      await helpers.time.increase(DAY * 15);
 
-    now = await helpers.time.latest();
+      now = await helpers.time.latest();
 
-    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(0);
-    // Mixing withdraws and redeems when ratio is 1 share = 1 asset
-    await expect(vault.connect(lp).redeem(_A(300), lp, lp)).not.to.be.reverted;
-    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(_A(-300));
-    await expect(vault.connect(lp).withdraw(_A(400), lp, lp)).not.to.be.reverted;
-    await expect(vault.connect(lp).redeem(_A(299), lp, lp)).not.to.be.reverted;
-    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(_A(-999));
+      expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(0);
+      // Mixing withdraws and redeems when ratio is 1 share = 1 asset
+      await expect(vault.connect(lp).redeem(_A(300), lp, lp)).not.to.be.reverted;
+      expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(_A(-300));
+      await expect(vault.connect(lp).withdraw(_A(400), lp, lp)).not.to.be.reverted;
+      await expect(vault.connect(lp).redeem(_A(299), lp, lp)).not.to.be.reverted;
+      expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(_A(-999));
 
-    await expect(vault.connect(lp).withdraw(_A(1), lp, lp)).not.to.be.reverted;
-    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(_A(-1000));
-    await expect(vault.connect(lp).withdraw(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+      await expect(vault.connect(lp).withdraw(_A(1), lp, lp)).not.to.be.reverted;
+      expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(_A(-1000));
+      await expect(vault.connect(lp).withdraw(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
 
-    await expect(vault.connect(lp).mint(_A(3000), lp)).not.to.be.reverted;
-    // Minted _A(3000), actual slot is _A(3000) + (_A(-1000)) = _A(2000)
-    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(_A(2000));
-    await currency.connect(lp).transfer(await strategies[0].other(), _A(2500)); // Give 2500 for free to the vault, now 1 share = 1.5 assets
+      await expect(vault.connect(lp).mint(_A(3000), lp)).not.to.be.reverted;
+      // Minted _A(3000), actual slot is _A(3000) + (_A(-1000)) = _A(2000)
+      expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(_A(2000));
+      await currency.connect(lp).transfer(await strategies[0].other(), _A(2500)); // Give 2500 for free to the vault, now 1 share = 1.5 assets
 
-    await helpers.time.increase(DAY * 7);
+      await helpers.time.increase(DAY * 7);
 
-    now = await helpers.time.latest();
+      now = await helpers.time.latest();
 
-    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(0);
+      expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(0);
 
-    await expect(vault.connect(lp).redeem(_A(300), lp, lp)).not.to.be.reverted;
-    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.closeTo(_A(-450), 1n);
-    await expect(vault.connect(lp).redeem(_A(400), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
-    await expect(vault.connect(lp).withdraw(_A(549), lp, lp)).not.to.be.reverted;
-    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.closeTo(_A(-999), 1n);
-    await expect(vault.connect(lp).withdraw(_A(1), lp, lp)).not.to.be.reverted;
+      await expect(vault.connect(lp).redeem(_A(300), lp, lp)).not.to.be.reverted;
+      expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.closeTo(_A(-450), 1n);
+      await expect(vault.connect(lp).redeem(_A(400), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+      await expect(vault.connect(lp).withdraw(_A(549), lp, lp)).not.to.be.reverted;
+      expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.closeTo(_A(-999), 1n);
+      await expect(vault.connect(lp).withdraw(_A(1), lp, lp)).not.to.be.reverted;
 
-    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.closeTo(_A(-1000), 1n);
-    await expect(vault.connect(lp).withdraw(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
-    await expect(vault.connect(lp).redeem(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+      expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.closeTo(_A(-1000), 1n);
+      await expect(vault.connect(lp).withdraw(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+      await expect(vault.connect(lp).redeem(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
 
-    // This fails because the limit extends for TWO slots
-    await helpers.time.increase(DAY);
-    await expect(vault.connect(lp).redeem(_A(500), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
-    await expect(vault.connect(lp).redeem(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
-    await expect(vault.connect(lp).withdraw(_A(500), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
-    await expect(vault.connect(lp).withdraw(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+      // This fails because the limit extends for TWO slots
+      await helpers.time.increase(DAY);
+      await expect(vault.connect(lp).redeem(_A(500), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+      await expect(vault.connect(lp).redeem(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+      await expect(vault.connect(lp).withdraw(_A(500), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+      await expect(vault.connect(lp).withdraw(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
 
-    await helpers.time.increase(DAY);
+      await helpers.time.increase(DAY);
 
-    now = await helpers.time.latest();
+      now = await helpers.time.latest();
 
-    await expect(vault.connect(lp).withdraw(_A(300), lp, lp)).not.to.be.reverted;
-    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(_A(-300));
-    await expect(vault.connect(lp).redeem(_A(500), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
-    await expect(vault.connect(lp).redeem(_A(300), lp, lp)).not.to.be.reverted;
+      await expect(vault.connect(lp).withdraw(_A(300), lp, lp)).not.to.be.reverted;
+      expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.equal(_A(-300));
+      await expect(vault.connect(lp).redeem(_A(500), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+      await expect(vault.connect(lp).redeem(_A(300), lp, lp)).not.to.be.reverted;
 
-    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.closeTo(_A(-750), 1n);
+      expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.closeTo(_A(-750), 1n);
 
-    await expect(vault.connect(lp).withdraw(_A(249), lp, lp)).not.to.be.reverted;
-    await expect(vault.connect(lp).redeem(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+      await expect(vault.connect(lp).withdraw(_A(249), lp, lp)).not.to.be.reverted;
+      await expect(vault.connect(lp).redeem(_A(1), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
 
-    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.closeTo(_A(-999), 1n);
+      expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.closeTo(_A(-999), 1n);
 
-    await expect(vault.connect(lp).withdraw(_A(1), lp, lp)).not.to.be.reverted;
+      await expect(vault.connect(lp).withdraw(_A(1), lp, lp)).not.to.be.reverted;
 
-    expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.closeTo(_A(-1000), 1n);
-  });
+      expect(await lom.LOM__getAssetsDelta(await lom.LOM__makeSlot(slotSize, now))).to.closeTo(_A(-1000), 1n);
+    });
 
-  it("Sets and resets delta using LOM__changeDelta correctly", async () => {
-    const { deployVault, admin } = await helpers.loadFixture(setUp);
+    it("Sets and resets delta using LOM__changeDelta correctly", async () => {
+      const { deployVault, admin } = await helpers.loadFixture(variant.fixture);
 
-    const { lom } = await deployVault(2);
-    const lomContract = await ethers.getContractAt("LimitOutflowModifier", lom);
+      const { lom } = await deployVault(2);
+      const lomContract = await ethers.getContractAt("LimitOutflowModifier", lom);
 
-    const slotSize = DAY;
-    const currentTimestamp = await helpers.time.latest();
+      const slotSize = DAY;
+      const currentTimestamp = await helpers.time.latest();
 
-    const slotIndex = await lom.LOM__makeSlot(slotSize, currentTimestamp);
+      const slotIndex = await lom.LOM__makeSlot(slotSize, currentTimestamp);
 
-    await expect(lomContract.connect(admin).LOM__changeDelta(slotIndex, _A(1500)))
-      .to.emit(lomContract, "DeltaManuallySet")
-      .withArgs(slotIndex, 0, _A(1500));
-    await expect(lomContract.connect(admin).LOM__changeDelta(slotIndex, _A(-250)))
-      .to.emit(lomContract, "DeltaManuallySet")
-      .withArgs(slotIndex, _A(1500), _A(1250));
+      await expect(lomContract.connect(admin).LOM__changeDelta(slotIndex, _A(1500)))
+        .to.emit(lomContract, "DeltaManuallySet")
+        .withArgs(slotIndex, 0, _A(1500));
+      await expect(lomContract.connect(admin).LOM__changeDelta(slotIndex, _A(-250)))
+        .to.emit(lomContract, "DeltaManuallySet")
+        .withArgs(slotIndex, _A(1500), _A(1250));
+    });
   });
 });

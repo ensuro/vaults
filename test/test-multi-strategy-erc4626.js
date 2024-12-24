@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { _A, getRole } = require("@ensuro/utils/js/utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
-const { encodeDummyStorage, dummyStorage, tagit } = require("./utils");
+const { encodeDummyStorage, dummyStorage, tagit, makeAllViewsPublic, mergeFragments } = require("./utils");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
@@ -48,9 +48,10 @@ const variants = [
   {
     name: "MultiStrategyERC4626",
     tagit: tagit,
+    accessError: "revertedWithACError",
     fixture: async () => {
       const ret = await setUp();
-      const { strategies, MultiStrategyERC4626, adminAddr, currency } = ret;
+      const { strategies, MultiStrategyERC4626, adminAddr, currency, admin } = ret;
       async function deployVault(strategies_, initStrategyDatas, depositQueue, withdrawQueue) {
         if (strategies_ === undefined) {
           strategies_ = strategies;
@@ -85,8 +86,13 @@ const variants = [
         );
       }
 
+      async function grantRole(vault, role, user) {
+        await vault.connect(admin).grantRole(getRole(role), user);
+      }
+
       return {
         deployVault,
+        grantRole,
         ...ret,
       };
     },
@@ -94,12 +100,15 @@ const variants = [
   {
     name: "LOM-MultiStrategyERC4626",
     tagit: tagit,
+    accessError: "revertedWithACError",
     fixture: async () => {
       const ret = await setUp();
-      const { strategies, MultiStrategyERC4626, adminAddr, currency } = ret;
+      const { strategies, MultiStrategyERC4626, adminAddr, currency, admin } = ret;
       const LimitOutflowModifier = await ethers.getContractFactory("LimitOutflowModifier");
       const ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
       const msv = await MultiStrategyERC4626.deploy();
+      const lom = await LimitOutflowModifier.deploy(msv);
+
       async function deployVault(strategies_, initStrategyDatas, depositQueue, withdrawQueue) {
         if (strategies_ === undefined) {
           strategies_ = strategies;
@@ -125,7 +134,6 @@ const variants = [
           depositQueue,
           withdrawQueue,
         ]);
-        const lom = await LimitOutflowModifier.deploy(msv);
         const proxy = await ERC1967Proxy.deploy(lom, initializeData);
         const deploymentTransaction = proxy.deploymentTransaction();
         const vault = msv.attach(await ethers.resolveAddress(proxy));
@@ -135,8 +143,129 @@ const variants = [
         return vault;
       }
 
+      async function grantRole(vault, role, user) {
+        await vault.connect(admin).grantRole(getRole(role), user);
+      }
+
       return {
         deployVault,
+        grantRole,
+        ...ret,
+      };
+    },
+  },
+  {
+    name: "AMProxy+LOM-AccessManagedMSV",
+    tagit: tagit,
+    accessManaged: true,
+    accessError: "revertedWithAMError",
+    fixture: async () => {
+      const ret = await setUp();
+      const { strategies, admin, currency } = ret;
+      const AccessManagedMSV = await ethers.getContractFactory("AccessManagedMSV");
+      const LimitOutflowModifier = await ethers.getContractFactory("LimitOutflowModifier");
+      const AccessManagedProxy = await ethers.getContractFactory("AccessManagedProxy");
+      const AccessManager = await ethers.getContractFactory("AccessManager");
+      const acMgr = await AccessManager.deploy(admin);
+      const msv = await AccessManagedMSV.deploy();
+      const lom = await LimitOutflowModifier.deploy(msv);
+      const combinedABI = mergeFragments(
+        AccessManagedMSV.interface.fragments,
+        mergeFragments(LimitOutflowModifier.interface.fragments, AccessManagedProxy.interface.fragments)
+      );
+      const roles = {
+        LP_ROLE: 1,
+        LOM_ADMIN: 2,
+        REBALANCER_ROLE: 3,
+        STRATEGY_ADMIN_ROLE: 4,
+        QUEUE_ADMIN_ROLE: 5,
+      };
+
+      async function deployVault(strategies_, initStrategyDatas, depositQueue, withdrawQueue) {
+        if (strategies_ === undefined) {
+          strategies_ = strategies;
+        } else if (typeof strategies_ == "number") {
+          strategies_ = strategies.slice(0, strategies_);
+        }
+        if (initStrategyDatas === undefined) {
+          initStrategyDatas = strategies_.map(() => encodeDummyStorage({}));
+        }
+        if (depositQueue === undefined) {
+          depositQueue = strategies_.map((_, i) => i);
+        }
+        if (withdrawQueue === undefined) {
+          withdrawQueue = strategies_.map((_, i) => i);
+        }
+        const initializeData = msv.interface.encodeFunctionData("initialize", [
+          NAME,
+          SYMB,
+          await ethers.resolveAddress(currency),
+          await Promise.all(strategies_.map(ethers.resolveAddress)),
+          initStrategyDatas,
+          depositQueue,
+          withdrawQueue,
+        ]);
+        const proxy = await AccessManagedProxy.deploy(lom, initializeData, acMgr);
+        const deploymentTransaction = proxy.deploymentTransaction();
+        const vault = await ethers.getContractAt(combinedABI, await ethers.resolveAddress(proxy));
+        vault.deploymentTransaction = () => deploymentTransaction;
+        await makeAllViewsPublic(acMgr.connect(admin), vault);
+
+        // Also make forwardToStrategy public
+        await acMgr
+          .connect(admin)
+          .setTargetFunctionRole(
+            vault,
+            [vault.interface.getFunction("forwardToStrategy").selector],
+            await acMgr.PUBLIC_ROLE()
+          );
+
+        // Setup LP role
+        await acMgr.connect(admin).labelRole(roles.LP_ROLE, "LP_ROLE");
+        for (const method of ["withdraw", "deposit", "mint", "redeem", "transfer"]) {
+          await acMgr
+            .connect(admin)
+            .setTargetFunctionRole(vault, [vault.interface.getFunction(method).selector], roles.LP_ROLE);
+        }
+
+        // Setup STRATEGY_ADMIN_ROLE role
+        await acMgr.connect(admin).labelRole(roles.STRATEGY_ADMIN_ROLE, "STRATEGY_ADMIN_ROLE");
+        for (const method of ["addStrategy", "replaceStrategy", "removeStrategy"]) {
+          await acMgr
+            .connect(admin)
+            .setTargetFunctionRole(vault, [vault.interface.getFunction(method).selector], roles.STRATEGY_ADMIN_ROLE);
+        }
+
+        // Setup QUEUE_ADMIN_ROLE role
+        await acMgr.connect(admin).labelRole(roles.STRATEGY_ADMIN_ROLE, "QUEUE_ADMIN_ROLE");
+        for (const method of ["changeDepositQueue", "changeWithdrawQueue"]) {
+          await acMgr
+            .connect(admin)
+            .setTargetFunctionRole(vault, [vault.interface.getFunction(method).selector], roles.QUEUE_ADMIN_ROLE);
+        }
+
+        // Setup REBALANCER_ROLE role
+        await acMgr.connect(admin).labelRole(roles.REBALANCER_ROLE, "REBALANCER_ROLE");
+        for (const method of ["rebalance"]) {
+          await acMgr
+            .connect(admin)
+            .setTargetFunctionRole(vault, [vault.interface.getFunction(method).selector], roles.REBALANCER_ROLE);
+        }
+
+        await vault.connect(admin).LOM__setLimit(3600 * 24, _A(1));
+
+        return vault;
+      }
+
+      async function grantRole(_, role, user) {
+        const roleId = roles[role];
+        if (roleId === undefined) throw new Error(`Unknown role ${role}`);
+        await acMgr.connect(admin).grantRole(roleId, user, 0);
+      }
+
+      return {
+        deployVault,
+        grantRole,
         ...ret,
       };
     },
@@ -170,7 +299,7 @@ async function invariantChecks(vault) {
 
 variants.forEach((variant) => {
   describe(`${variant.name} contract tests`, function () {
-    it("Initializes the vault correctly", async () => {
+    variant.tagit("Initializes the vault correctly", async () => {
       const { deployVault, currency, strategies } = await helpers.loadFixture(variant.fixture);
       const vault = await deployVault(1);
       expect(await vault.name()).to.equal(NAME);
@@ -184,7 +313,7 @@ variants.forEach((variant) => {
       expect(await vault.totalAssets()).to.equal(0);
     });
 
-    it("Initialization fails if strategy connect fails", async () => {
+    variant.tagit("Initialization fails if strategy connect fails", async () => {
       const { deployVault, DummyInvestStrategy } = await helpers.loadFixture(variant.fixture);
       let vault = deployVault(1, [encodeDummyStorage({ failConnect: true })]);
       await expect(vault).to.be.revertedWithCustomError(DummyInvestStrategy, "Fail").withArgs("connect");
@@ -200,7 +329,7 @@ variants.forEach((variant) => {
       }
     });
 
-    it("It sets and reads the right value from strategy storage", async () => {
+    variant.tagit("It sets and reads the right value from strategy storage", async () => {
       const { deployVault, strategies } = await helpers.loadFixture(variant.fixture);
       const vault = await deployVault(3);
       await expect(vault.forwardToStrategy(4, 0, encodeDummyStorage({}))).to.be.revertedWithCustomError(
@@ -236,7 +365,7 @@ variants.forEach((variant) => {
       }
     });
 
-    it("It fails when initialized with wrong parameters", async () => {
+    variant.tagit("It fails when initialized with wrong parameters", async () => {
       const { strategies, MultiStrategyERC4626, deployVault } = await helpers.loadFixture(variant.fixture);
       // Sending 0 strategies fails
       await expect(deployVault(0)).to.be.revertedWithCustomError(MultiStrategyERC4626, "InvalidStrategiesLength");
@@ -296,18 +425,32 @@ variants.forEach((variant) => {
       await invariantChecks(vault);
     });
 
-    it("It respects the order of deposit and withdrawal queues", async () => {
-      const { deployVault, lp, lp2, currency, admin, strategies } = await helpers.loadFixture(variant.fixture);
+    variant.tagit("It respects the order of deposit and withdrawal queues", async () => {
+      const { deployVault, lp, lp2, currency, grantRole, strategies } = await helpers.loadFixture(variant.fixture);
       const vault = await deployVault(4, undefined, [3, 2, 1, 0], [2, 0, 3, 1]);
       await currency.connect(lp).approve(vault, MaxUint256);
 
-      await expect(vault.connect(lp).deposit(_A(100), lp)).to.be.revertedWithCustomError(
-        vault,
-        "ERC4626ExceededMaxDeposit"
-      );
-      await expect(vault.connect(lp).mint(_A(100), lp)).to.be.revertedWithCustomError(vault, "ERC4626ExceededMaxMint");
+      if (variant.accessManaged) {
+        await expect(vault.connect(lp).deposit(_A(100), lp)).to.be.revertedWithCustomError(
+          vault,
+          "AccessManagedUnauthorized"
+        );
+        await expect(vault.connect(lp).mint(_A(100), lp)).to.be.revertedWithCustomError(
+          vault,
+          "AccessManagedUnauthorized"
+        );
+      } else {
+        await expect(vault.connect(lp).deposit(_A(100), lp)).to.be.revertedWithCustomError(
+          vault,
+          "ERC4626ExceededMaxDeposit"
+        );
+        await expect(vault.connect(lp).mint(_A(100), lp)).to.be.revertedWithCustomError(
+          vault,
+          "ERC4626ExceededMaxMint"
+        );
+      }
 
-      await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
+      await grantRole(vault, "LP_ROLE", lp);
       await expect(vault.connect(lp).deposit(_A(100), lp)).not.to.be.reverted;
 
       expect(await vault.totalAssets()).to.be.equal(_A(100));
@@ -339,6 +482,9 @@ variants.forEach((variant) => {
       await vault.forwardToStrategy(3, 0, encodeDummyStorage({ failDeposit: true }));
 
       await expect(vault.connect(lp).transfer(lp2, _A(150))).not.to.be.reverted;
+      if (variant.accessManaged) {
+        await grantRole(vault, "LP_ROLE", lp2); // In accessManaged LPs require permissions if they have tokens
+      }
       await expect(vault.connect(lp2).redeem(_A(150), lp2, lp2)).not.to.be.reverted;
       expect(await currency.balanceOf(await strategies[3].other())).to.be.equal(_A(0));
       expect(await currency.balanceOf(await strategies[1].other())).to.be.equal(_A(150));
@@ -349,20 +495,24 @@ variants.forEach((variant) => {
       expect(await vault.totalAssets()).to.be.equal(_A(0));
     });
 
-    it("It respects the order of deposit and authorized user can rebalance", async () => {
-      const { deployVault, lp, lp2, currency, admin, strategies } = await helpers.loadFixture(variant.fixture);
+    variant.tagit("It respects the order of deposit and authorized user can rebalance", async () => {
+      const { deployVault, lp, lp2, currency, grantRole, strategies } = await helpers.loadFixture(variant.fixture);
       const vault = await deployVault(4, undefined, [3, 2, 1, 0], [2, 0, 3, 1]);
       await currency.connect(lp).approve(vault, MaxUint256);
-      await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
+      await grantRole(vault, "LP_ROLE", lp);
       await expect(vault.connect(lp).deposit(_A(100), lp)).not.to.be.reverted;
 
       expect(await vault.totalAssets()).to.be.equal(_A(100));
       // Check money went to strategy[3]
       expect(await currency.balanceOf(await strategies[3].other())).to.be.equal(_A(100));
 
-      await expect(vault.connect(lp2).rebalance(3, 1, _A(50))).to.be.revertedWithACError(vault, lp2, "REBALANCER_ROLE");
+      await expect(vault.connect(lp2).rebalance(3, 1, _A(50))).to.be[variant.accessError](
+        vault,
+        lp2,
+        "REBALANCER_ROLE"
+      );
 
-      await vault.connect(admin).grantRole(getRole("REBALANCER_ROLE"), lp2);
+      await grantRole(vault, "REBALANCER_ROLE", lp2);
 
       await expect(vault.connect(lp2).rebalance(33, 1, _A(50))).to.be.revertedWithCustomError(vault, "InvalidStrategy");
       await expect(vault.connect(lp2).rebalance(1, 33, _A(50))).to.be.revertedWithCustomError(vault, "InvalidStrategy");
@@ -395,11 +545,11 @@ variants.forEach((variant) => {
       await expect(vault.connect(lp2).rebalance(3, 0, MaxUint256)).not.to.emit(vault, "Rebalance");
     });
 
-    it("It can addStrategy and is added at the bottom of the queues", async () => {
-      const { deployVault, lp, lp2, currency, admin, strategies } = await helpers.loadFixture(variant.fixture);
+    variant.tagit("It can addStrategy and is added at the bottom of the queues", async () => {
+      const { deployVault, lp, lp2, currency, grantRole, strategies } = await helpers.loadFixture(variant.fixture);
       const vault = await deployVault(3, undefined, [1, 0, 2], [2, 0, 1]);
       await currency.connect(lp).approve(vault, MaxUint256);
-      await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
+      await grantRole(vault, "LP_ROLE", lp);
       await expect(vault.connect(lp).deposit(_A(100), lp)).not.to.be.reverted;
       await invariantChecks(vault);
 
@@ -410,13 +560,13 @@ variants.forEach((variant) => {
       expect(await vault.depositQueue()).to.deep.equal([2, 1, 3].concat(Array(MAX_STRATEGIES - 3).fill(0)));
       expect(await vault.withdrawQueue()).to.deep.equal([3, 1, 2].concat(Array(MAX_STRATEGIES - 3).fill(0)));
 
-      await expect(vault.connect(lp2).addStrategy(strategies[5], encodeDummyStorage({}))).to.be.revertedWithACError(
+      await expect(vault.connect(lp2).addStrategy(strategies[5], encodeDummyStorage({}))).to.be[variant.accessError](
         vault,
         lp2,
         "STRATEGY_ADMIN_ROLE"
       );
 
-      await vault.connect(admin).grantRole(getRole("STRATEGY_ADMIN_ROLE"), lp2);
+      await grantRole(vault, "STRATEGY_ADMIN_ROLE", lp2);
 
       await expect(vault.connect(lp2).addStrategy(ZeroAddress, encodeDummyStorage({}))).to.be.revertedWithCustomError(
         vault,
@@ -440,13 +590,13 @@ variants.forEach((variant) => {
       await invariantChecks(vault);
     });
 
-    it("It can add up to 32 strategies", async () => {
-      const { deployVault, lp2, DummyInvestStrategy, currency, admin, strategies } = await helpers.loadFixture(
+    variant.tagit("It can add up to 32 strategies", async () => {
+      const { deployVault, lp2, DummyInvestStrategy, currency, grantRole, strategies } = await helpers.loadFixture(
         variant.fixture
       );
       const vault = await deployVault(30);
       await invariantChecks(vault);
-      await vault.connect(admin).grantRole(getRole("STRATEGY_ADMIN_ROLE"), lp2);
+      await grantRole(vault, "STRATEGY_ADMIN_ROLE", lp2);
 
       // Add 31 works fine
       await expect(vault.connect(lp2).addStrategy(strategies[30], encodeDummyStorage({})))
@@ -470,11 +620,11 @@ variants.forEach((variant) => {
       await invariantChecks(vault);
     });
 
-    it("It can removeStrategy only if doesn't have funds", async () => {
-      const { deployVault, lp, lp2, currency, admin, strategies } = await helpers.loadFixture(variant.fixture);
+    variant.tagit("It can removeStrategy only if doesn't have funds", async () => {
+      const { deployVault, lp, lp2, currency, grantRole, strategies } = await helpers.loadFixture(variant.fixture);
       const vault = await deployVault(3, undefined, [1, 0, 2], [2, 0, 1]);
       await currency.connect(lp).approve(vault, MaxUint256);
-      await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
+      await grantRole(vault, "LP_ROLE", lp);
       await expect(vault.connect(lp).mint(_A(100), lp)).not.to.be.reverted;
       await invariantChecks(vault);
 
@@ -482,13 +632,13 @@ variants.forEach((variant) => {
       // Check money went to strategy[3]
       expect(await currency.balanceOf(await strategies[1].other())).to.be.equal(_A(100));
 
-      await expect(vault.connect(lp2).removeStrategy(0, false)).to.be.revertedWithACError(
+      await expect(vault.connect(lp2).removeStrategy(0, false)).to.be[variant.accessError](
         vault,
         lp2,
         "STRATEGY_ADMIN_ROLE"
       );
 
-      await vault.connect(admin).grantRole(getRole("STRATEGY_ADMIN_ROLE"), lp2);
+      await grantRole(vault, "STRATEGY_ADMIN_ROLE", lp2);
 
       await expect(vault.connect(lp2).removeStrategy(33, false)).to.be.revertedWithCustomError(
         vault,
@@ -529,11 +679,11 @@ variants.forEach((variant) => {
       );
     });
 
-    it("It can removeStrategy in different order", async () => {
-      const { deployVault, lp2, admin, strategies } = await helpers.loadFixture(variant.fixture);
+    variant.tagit("It can removeStrategy in different order", async () => {
+      const { deployVault, lp2, grantRole, strategies } = await helpers.loadFixture(variant.fixture);
       const vault = await deployVault(3, undefined, [1, 0, 2], [2, 0, 1]);
 
-      await vault.connect(admin).grantRole(getRole("STRATEGY_ADMIN_ROLE"), lp2);
+      await grantRole(vault, "STRATEGY_ADMIN_ROLE", lp2);
 
       await expect(vault.connect(lp2).removeStrategy(1, false))
         .to.emit(vault, "StrategyRemoved")
@@ -558,17 +708,17 @@ variants.forEach((variant) => {
       );
     });
 
-    it("It can change the depositQueue if authorized", async () => {
-      const { deployVault, lp2, admin } = await helpers.loadFixture(variant.fixture);
+    variant.tagit("It can change the depositQueue if authorized", async () => {
+      const { deployVault, lp2, grantRole } = await helpers.loadFixture(variant.fixture);
       const vault = await deployVault(3, undefined, [1, 0, 2], [2, 0, 1]);
       expect(await vault.depositQueue()).to.deep.equal([2, 1, 3].concat(Array(MAX_STRATEGIES - 3).fill(0)));
 
-      await expect(vault.connect(lp2).changeDepositQueue([0, 1, 2])).to.be.revertedWithACError(
+      await expect(vault.connect(lp2).changeDepositQueue([0, 1, 2])).to.be[variant.accessError](
         vault,
         lp2,
         "QUEUE_ADMIN_ROLE"
       );
-      await vault.connect(admin).grantRole(getRole("QUEUE_ADMIN_ROLE"), lp2);
+      await grantRole(vault, "QUEUE_ADMIN_ROLE", lp2);
 
       await expect(vault.connect(lp2).changeDepositQueue([1, 1, 2]))
         .to.be.revertedWithCustomError(vault, "InvalidQueueIndexDuplicated")
@@ -592,24 +742,24 @@ variants.forEach((variant) => {
       await invariantChecks(vault);
 
       const vault32 = await deployVault(32);
-      await vault32.connect(admin).grantRole(getRole("QUEUE_ADMIN_ROLE"), lp2);
+      await grantRole(vault32, "QUEUE_ADMIN_ROLE", lp2);
       await expect(vault.connect(lp2).changeDepositQueue([...Array(33).keys()])).to.be.revertedWithCustomError(
         vault,
         "InvalidQueue"
       );
     });
 
-    it("It can change the withdrawQueue if authorized", async () => {
-      const { deployVault, lp2, admin } = await helpers.loadFixture(variant.fixture);
+    variant.tagit("It can change the withdrawQueue if authorized", async () => {
+      const { deployVault, lp2, grantRole } = await helpers.loadFixture(variant.fixture);
       const vault = await deployVault(3, undefined, [1, 0, 2], [2, 0, 1]);
       expect(await vault.withdrawQueue()).to.deep.equal([3, 1, 2].concat(Array(MAX_STRATEGIES - 3).fill(0)));
 
-      await expect(vault.connect(lp2).changeWithdrawQueue([0, 1, 2])).to.be.revertedWithACError(
+      await expect(vault.connect(lp2).changeWithdrawQueue([0, 1, 2])).to.be[variant.accessError](
         vault,
         lp2,
         "QUEUE_ADMIN_ROLE"
       );
-      await vault.connect(admin).grantRole(getRole("QUEUE_ADMIN_ROLE"), lp2);
+      await grantRole(vault, "QUEUE_ADMIN_ROLE", lp2);
 
       await expect(vault.connect(lp2).changeWithdrawQueue([1, 1, 2]))
         .to.be.revertedWithCustomError(vault, "InvalidQueueIndexDuplicated")
@@ -633,22 +783,22 @@ variants.forEach((variant) => {
       await invariantChecks(vault);
 
       const vault32 = await deployVault(32);
-      await vault32.connect(admin).grantRole(getRole("QUEUE_ADMIN_ROLE"), lp2);
+      await grantRole(vault32, "QUEUE_ADMIN_ROLE", lp2);
       await expect(vault.connect(lp2).changeWithdrawQueue([...Array(33).keys()])).to.be.revertedWithCustomError(
         vault,
         "InvalidQueue"
       );
     });
 
-    it("It can replaceStrategy if authorized", async () => {
-      const { deployVault, lp, lp2, currency, admin, strategies } = await helpers.loadFixture(variant.fixture);
+    variant.tagit("It can replaceStrategy if authorized", async () => {
+      const { deployVault, lp, lp2, currency, grantRole, strategies } = await helpers.loadFixture(variant.fixture);
       const vault = await deployVault(3, undefined, [1, 0, 2], [2, 0, 1]);
 
-      await expect(
-        vault.connect(lp2).replaceStrategy(0, strategies[5], encodeDummyStorage({}), false)
-      ).to.be.revertedWithACError(vault, lp2, "STRATEGY_ADMIN_ROLE");
+      await expect(vault.connect(lp2).replaceStrategy(0, strategies[5], encodeDummyStorage({}), false)).to.be[
+        variant.accessError
+      ](vault, lp2, "STRATEGY_ADMIN_ROLE");
 
-      await vault.connect(admin).grantRole(getRole("STRATEGY_ADMIN_ROLE"), lp2);
+      await grantRole(vault, "STRATEGY_ADMIN_ROLE", lp2);
 
       await expect(vault.connect(lp2).replaceStrategy(33, strategies[5], encodeDummyStorage({}), false)).to.be.reverted;
 
@@ -658,7 +808,7 @@ variants.forEach((variant) => {
 
       // Deposit some funds to make it more interesting
       await currency.connect(lp).approve(vault, MaxUint256);
-      await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
+      await grantRole(vault, "LP_ROLE", lp);
       await expect(vault.connect(lp).deposit(_A(100), lp)).not.to.be.reverted;
       expect(await vault.totalAssets()).to.equal(_A(100));
       await invariantChecks(vault);
@@ -715,7 +865,7 @@ variants.forEach((variant) => {
         .withArgs(strategies[6], strategies[6]);
     });
 
-    it("Initialization fails if any strategy and vault have different assets", async () => {
+    variant.tagit("Initialization fails if any strategy and vault have different assets", async () => {
       const { MultiStrategyERC4626, DummyInvestStrategy, adminAddr, currency, admin, deployVault, strategies } =
         await helpers.loadFixture(variant.fixture);
 
@@ -795,18 +945,26 @@ variants.forEach((variant) => {
       await invariantChecks(vault);
     });
 
-    it("It respects the order of deposit and withdrawal queues", async () => {
-      const { deployVault, lp, lp2, currency, admin, strategies } = await helpers.loadFixture(variant.fixture);
+    variant.tagit("It respects the order of deposit and withdrawal queues", async () => {
+      const { deployVault, lp, lp2, currency, grantRole, strategies } = await helpers.loadFixture(variant.fixture);
       const vault = await deployVault(4, undefined, [3, 2, 1, 0], [2, 0, 3, 1]);
       await currency.connect(lp).approve(vault, MaxUint256);
 
-      await expect(vault.connect(lp).deposit(_A(100), lp)).to.be.revertedWithCustomError(
-        vault,
-        "ERC4626ExceededMaxDeposit"
-      );
-      await expect(vault.connect(lp).mint(_A(100), lp)).to.be.revertedWithCustomError(vault, "ERC4626ExceededMaxMint");
+      if (variant.accessManaged) {
+        await expect(vault.connect(lp).deposit(_A(100), lp)).to.be.revertedWithAMError(vault, lp);
+        await expect(vault.connect(lp).mint(_A(100), lp)).to.be.revertedWithAMError(vault, lp);
+      } else {
+        await expect(vault.connect(lp).deposit(_A(100), lp)).to.be.revertedWithCustomError(
+          vault,
+          "ERC4626ExceededMaxDeposit"
+        );
+        await expect(vault.connect(lp).mint(_A(100), lp)).to.be.revertedWithCustomError(
+          vault,
+          "ERC4626ExceededMaxMint"
+        );
+      }
 
-      await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
+      await grantRole(vault, "LP_ROLE", lp);
       await expect(vault.connect(lp).deposit(_A(100), lp)).not.to.be.reverted;
 
       expect(await vault.totalAssets()).to.be.equal(_A(100));
@@ -838,6 +996,10 @@ variants.forEach((variant) => {
       await vault.forwardToStrategy(3, 0, encodeDummyStorage({ failDeposit: true }));
 
       await expect(vault.connect(lp).transfer(lp2, _A(150))).not.to.be.reverted;
+
+      if (variant.accessManaged) {
+        await grantRole(vault, "LP_ROLE", lp2);
+      }
       await expect(vault.connect(lp2).redeem(_A(150), lp2, lp2)).not.to.be.reverted;
       expect(await currency.balanceOf(await strategies[3].other())).to.be.equal(_A(0));
       expect(await currency.balanceOf(await strategies[1].other())).to.be.equal(_A(150));
@@ -848,20 +1010,24 @@ variants.forEach((variant) => {
       expect(await vault.totalAssets()).to.be.equal(_A(0));
     });
 
-    it("It respects the order of deposit and authorized user can rebalance", async () => {
-      const { deployVault, lp, lp2, currency, admin, strategies } = await helpers.loadFixture(variant.fixture);
+    variant.tagit("It respects the order of deposit and authorized user can rebalance", async () => {
+      const { deployVault, lp, lp2, currency, grantRole, strategies } = await helpers.loadFixture(variant.fixture);
       const vault = await deployVault(4, undefined, [3, 2, 1, 0], [2, 0, 3, 1]);
       await currency.connect(lp).approve(vault, MaxUint256);
-      await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
+      await grantRole(vault, "LP_ROLE", lp);
       await expect(vault.connect(lp).deposit(_A(100), lp)).not.to.be.reverted;
 
       expect(await vault.totalAssets()).to.be.equal(_A(100));
       // Check money went to strategy[3]
       expect(await currency.balanceOf(await strategies[3].other())).to.be.equal(_A(100));
 
-      await expect(vault.connect(lp2).rebalance(3, 1, _A(50))).to.be.revertedWithACError(vault, lp2, "REBALANCER_ROLE");
+      await expect(vault.connect(lp2).rebalance(3, 1, _A(50))).to.be[variant.accessError](
+        vault,
+        lp2,
+        "REBALANCER_ROLE"
+      );
 
-      await vault.connect(admin).grantRole(getRole("REBALANCER_ROLE"), lp2);
+      await grantRole(vault, "REBALANCER_ROLE", lp2);
 
       await expect(vault.connect(lp2).rebalance(33, 1, _A(50))).to.be.revertedWithCustomError(vault, "InvalidStrategy");
       await expect(vault.connect(lp2).rebalance(1, 33, _A(50))).to.be.revertedWithCustomError(vault, "InvalidStrategy");
@@ -894,11 +1060,11 @@ variants.forEach((variant) => {
       await expect(vault.connect(lp2).rebalance(3, 0, MaxUint256)).not.to.emit(vault, "Rebalance");
     });
 
-    it("It can addStrategy and is added at the bottom of the queues", async () => {
-      const { deployVault, lp, lp2, currency, admin, strategies } = await helpers.loadFixture(variant.fixture);
+    variant.tagit("It can addStrategy and is added at the bottom of the queues", async () => {
+      const { deployVault, lp, lp2, currency, grantRole, strategies } = await helpers.loadFixture(variant.fixture);
       const vault = await deployVault(3, undefined, [1, 0, 2], [2, 0, 1]);
       await currency.connect(lp).approve(vault, MaxUint256);
-      await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
+      await grantRole(vault, "LP_ROLE", lp);
       await expect(vault.connect(lp).deposit(_A(100), lp)).not.to.be.reverted;
       await invariantChecks(vault);
 
@@ -909,13 +1075,13 @@ variants.forEach((variant) => {
       expect(await vault.depositQueue()).to.deep.equal([2, 1, 3].concat(Array(MAX_STRATEGIES - 3).fill(0)));
       expect(await vault.withdrawQueue()).to.deep.equal([3, 1, 2].concat(Array(MAX_STRATEGIES - 3).fill(0)));
 
-      await expect(vault.connect(lp2).addStrategy(strategies[5], encodeDummyStorage({}))).to.be.revertedWithACError(
+      await expect(vault.connect(lp2).addStrategy(strategies[5], encodeDummyStorage({}))).to.be[variant.accessError](
         vault,
         lp2,
         "STRATEGY_ADMIN_ROLE"
       );
 
-      await vault.connect(admin).grantRole(getRole("STRATEGY_ADMIN_ROLE"), lp2);
+      await grantRole(vault, "STRATEGY_ADMIN_ROLE", lp2);
 
       await expect(vault.connect(lp2).addStrategy(ZeroAddress, encodeDummyStorage({}))).to.be.revertedWithCustomError(
         vault,
@@ -939,13 +1105,13 @@ variants.forEach((variant) => {
       await invariantChecks(vault);
     });
 
-    it("It can add up to 32 strategies", async () => {
-      const { deployVault, lp2, DummyInvestStrategy, currency, admin, strategies } = await helpers.loadFixture(
+    variant.tagit("It can add up to 32 strategies", async () => {
+      const { deployVault, lp2, DummyInvestStrategy, currency, grantRole, strategies } = await helpers.loadFixture(
         variant.fixture
       );
       const vault = await deployVault(30);
       await invariantChecks(vault);
-      await vault.connect(admin).grantRole(getRole("STRATEGY_ADMIN_ROLE"), lp2);
+      await grantRole(vault, "STRATEGY_ADMIN_ROLE", lp2);
 
       // Add 31 works fine
       await expect(vault.connect(lp2).addStrategy(strategies[30], encodeDummyStorage({})))
@@ -969,11 +1135,11 @@ variants.forEach((variant) => {
       await invariantChecks(vault);
     });
 
-    it("It can removeStrategy only if doesn't have funds", async () => {
-      const { deployVault, lp, lp2, currency, admin, strategies } = await helpers.loadFixture(variant.fixture);
+    variant.tagit("It can removeStrategy only if doesn't have funds", async () => {
+      const { deployVault, lp, lp2, currency, grantRole, strategies } = await helpers.loadFixture(variant.fixture);
       const vault = await deployVault(3, undefined, [1, 0, 2], [2, 0, 1]);
       await currency.connect(lp).approve(vault, MaxUint256);
-      await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
+      await grantRole(vault, "LP_ROLE", lp);
       await expect(vault.connect(lp).mint(_A(100), lp)).not.to.be.reverted;
       await invariantChecks(vault);
 
@@ -981,13 +1147,13 @@ variants.forEach((variant) => {
       // Check money went to strategy[3]
       expect(await currency.balanceOf(await strategies[1].other())).to.be.equal(_A(100));
 
-      await expect(vault.connect(lp2).removeStrategy(0, false)).to.be.revertedWithACError(
+      await expect(vault.connect(lp2).removeStrategy(0, false)).to.be[variant.accessError](
         vault,
         lp2,
         "STRATEGY_ADMIN_ROLE"
       );
 
-      await vault.connect(admin).grantRole(getRole("STRATEGY_ADMIN_ROLE"), lp2);
+      await grantRole(vault, "STRATEGY_ADMIN_ROLE", lp2);
 
       await expect(vault.connect(lp2).removeStrategy(33, false)).to.be.revertedWithCustomError(
         vault,
@@ -1028,11 +1194,11 @@ variants.forEach((variant) => {
       );
     });
 
-    it("It can removeStrategy in different order", async () => {
-      const { deployVault, lp2, admin, strategies } = await helpers.loadFixture(variant.fixture);
+    variant.tagit("It can removeStrategy in different order", async () => {
+      const { deployVault, lp2, grantRole, strategies } = await helpers.loadFixture(variant.fixture);
       const vault = await deployVault(3, undefined, [1, 0, 2], [2, 0, 1]);
 
-      await vault.connect(admin).grantRole(getRole("STRATEGY_ADMIN_ROLE"), lp2);
+      await grantRole(vault, "STRATEGY_ADMIN_ROLE", lp2);
 
       await expect(vault.connect(lp2).removeStrategy(1, false))
         .to.emit(vault, "StrategyRemoved")
@@ -1057,17 +1223,17 @@ variants.forEach((variant) => {
       );
     });
 
-    it("It can change the depositQueue if authorized", async () => {
-      const { deployVault, lp2, admin } = await helpers.loadFixture(variant.fixture);
+    variant.tagit("It can change the depositQueue if authorized", async () => {
+      const { deployVault, lp2, grantRole } = await helpers.loadFixture(variant.fixture);
       const vault = await deployVault(3, undefined, [1, 0, 2], [2, 0, 1]);
       expect(await vault.depositQueue()).to.deep.equal([2, 1, 3].concat(Array(MAX_STRATEGIES - 3).fill(0)));
 
-      await expect(vault.connect(lp2).changeDepositQueue([0, 1, 2])).to.be.revertedWithACError(
+      await expect(vault.connect(lp2).changeDepositQueue([0, 1, 2])).to.be[variant.accessError](
         vault,
         lp2,
         "QUEUE_ADMIN_ROLE"
       );
-      await vault.connect(admin).grantRole(getRole("QUEUE_ADMIN_ROLE"), lp2);
+      await grantRole(vault, "QUEUE_ADMIN_ROLE", lp2);
 
       await expect(vault.connect(lp2).changeDepositQueue([1, 1, 2]))
         .to.be.revertedWithCustomError(vault, "InvalidQueueIndexDuplicated")
@@ -1091,24 +1257,24 @@ variants.forEach((variant) => {
       await invariantChecks(vault);
 
       const vault32 = await deployVault(32);
-      await vault32.connect(admin).grantRole(getRole("QUEUE_ADMIN_ROLE"), lp2);
+      await grantRole(vault32, "QUEUE_ADMIN_ROLE", lp2);
       await expect(vault.connect(lp2).changeDepositQueue([...Array(33).keys()])).to.be.revertedWithCustomError(
         vault,
         "InvalidQueue"
       );
     });
 
-    it("It can change the withdrawQueue if authorized", async () => {
-      const { deployVault, lp2, admin } = await helpers.loadFixture(variant.fixture);
+    variant.tagit("It can change the withdrawQueue if authorized", async () => {
+      const { deployVault, lp2, grantRole } = await helpers.loadFixture(variant.fixture);
       const vault = await deployVault(3, undefined, [1, 0, 2], [2, 0, 1]);
       expect(await vault.withdrawQueue()).to.deep.equal([3, 1, 2].concat(Array(MAX_STRATEGIES - 3).fill(0)));
 
-      await expect(vault.connect(lp2).changeWithdrawQueue([0, 1, 2])).to.be.revertedWithACError(
+      await expect(vault.connect(lp2).changeWithdrawQueue([0, 1, 2])).to.be[variant.accessError](
         vault,
         lp2,
         "QUEUE_ADMIN_ROLE"
       );
-      await vault.connect(admin).grantRole(getRole("QUEUE_ADMIN_ROLE"), lp2);
+      await grantRole(vault, "QUEUE_ADMIN_ROLE", lp2);
 
       await expect(vault.connect(lp2).changeWithdrawQueue([1, 1, 2]))
         .to.be.revertedWithCustomError(vault, "InvalidQueueIndexDuplicated")
@@ -1132,22 +1298,22 @@ variants.forEach((variant) => {
       await invariantChecks(vault);
 
       const vault32 = await deployVault(32);
-      await vault32.connect(admin).grantRole(getRole("QUEUE_ADMIN_ROLE"), lp2);
+      await grantRole(vault32, "QUEUE_ADMIN_ROLE", lp2);
       await expect(vault.connect(lp2).changeWithdrawQueue([...Array(33).keys()])).to.be.revertedWithCustomError(
         vault,
         "InvalidQueue"
       );
     });
 
-    it("It can replaceStrategy if authorized", async () => {
-      const { deployVault, lp, lp2, currency, admin, strategies } = await helpers.loadFixture(variant.fixture);
+    variant.tagit("It can replaceStrategy if authorized", async () => {
+      const { deployVault, lp, lp2, currency, grantRole, strategies } = await helpers.loadFixture(variant.fixture);
       const vault = await deployVault(3, undefined, [1, 0, 2], [2, 0, 1]);
 
-      await expect(
-        vault.connect(lp2).replaceStrategy(0, strategies[5], encodeDummyStorage({}), false)
-      ).to.be.revertedWithACError(vault, lp2, "STRATEGY_ADMIN_ROLE");
+      await expect(vault.connect(lp2).replaceStrategy(0, strategies[5], encodeDummyStorage({}), false)).to.be[
+        variant.accessError
+      ](vault, lp2, "STRATEGY_ADMIN_ROLE");
 
-      await vault.connect(admin).grantRole(getRole("STRATEGY_ADMIN_ROLE"), lp2);
+      await grantRole(vault, "STRATEGY_ADMIN_ROLE", lp2);
 
       await expect(vault.connect(lp2).replaceStrategy(33, strategies[5], encodeDummyStorage({}), false)).to.be.reverted;
 
@@ -1157,7 +1323,7 @@ variants.forEach((variant) => {
 
       // Deposit some funds to make it more interesting
       await currency.connect(lp).approve(vault, MaxUint256);
-      await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
+      await grantRole(vault, "LP_ROLE", lp);
       await expect(vault.connect(lp).deposit(_A(100), lp)).not.to.be.reverted;
       expect(await vault.totalAssets()).to.equal(_A(100));
       await invariantChecks(vault);
@@ -1214,7 +1380,7 @@ variants.forEach((variant) => {
         .withArgs(strategies[6], strategies[6]);
     });
 
-    it("Initialization fails if any strategy and vault have different assets", async () => {
+    variant.tagit("Initialization fails if any strategy and vault have different assets", async () => {
       const { MultiStrategyERC4626, DummyInvestStrategy, adminAddr, currency } = await helpers.loadFixture(
         variant.fixture
       );
@@ -1246,8 +1412,8 @@ variants.forEach((variant) => {
       ).to.be.revertedWithCustomError(MultiStrategyERC4626, "InvalidStrategyAsset");
     });
 
-    it("Fails to add strategy to vault if assets are different", async () => {
-      const { deployVault, DummyInvestStrategy, admin, MultiStrategyERC4626 } = await helpers.loadFixture(
+    variant.tagit("Fails to add strategy to vault if assets are different", async () => {
+      const { deployVault, DummyInvestStrategy, grantRole, admin, MultiStrategyERC4626 } = await helpers.loadFixture(
         variant.fixture
       );
 
@@ -1260,16 +1426,16 @@ variants.forEach((variant) => {
 
       const differentStrategy = await DummyInvestStrategy.deploy(differentCurrency);
 
-      await vault.connect(admin).grantRole(getRole("STRATEGY_ADMIN_ROLE"), admin);
+      await grantRole(vault, "STRATEGY_ADMIN_ROLE", admin);
 
       await expect(
         vault.connect(admin).addStrategy(differentStrategy, encodeDummyStorage({}))
       ).to.be.revertedWithCustomError(MultiStrategyERC4626, "InvalidStrategyAsset");
     });
 
-    it("Fails to replace strategy to vault if assets are different", async () => {
+    variant.tagit("Fails to replace strategy to vault if assets are different", async () => {
       // Obtener instancias necesarias para el test (contract, roles, etc.)
-      const { deployVault, DummyInvestStrategy, admin, MultiStrategyERC4626 } = await helpers.loadFixture(
+      const { deployVault, DummyInvestStrategy, grantRole, admin, MultiStrategyERC4626 } = await helpers.loadFixture(
         variant.fixture
       );
 
@@ -1282,7 +1448,7 @@ variants.forEach((variant) => {
 
       const differentStrategy = await DummyInvestStrategy.deploy(differentCurrency);
 
-      await vault.connect(admin).grantRole(getRole("STRATEGY_ADMIN_ROLE"), admin);
+      await grantRole(vault, "STRATEGY_ADMIN_ROLE", admin);
 
       await expect(
         vault.connect(admin).replaceStrategy(0, differentStrategy, encodeDummyStorage({}), false)
