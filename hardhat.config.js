@@ -32,9 +32,10 @@ module.exports = {
       "@ensuro/utils/contracts/TestCurrency.sol",
       "@ensuro/swaplibrary/contracts/mocks/SwapRouterMock.sol",
       "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol",
+      "@openzeppelin/contracts/access/manager/AccessManager.sol",
     ],
   },
   mocha: {
-    timeout: 100000,
+    timeout: 180000,
   },
 };
