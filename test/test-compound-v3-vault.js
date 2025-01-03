@@ -188,6 +188,13 @@ const variants = [
       expect(action).to.be.revertedWithACError(contract, user, role),
     getSwapConfig: async (vault) => vault.getSwapConfig(),
     setSwapConfig: async (vault, swapConfig) => vault.setSwapConfig(swapConfig),
+    grantAccess: async (hre, operation, vault, admin, user) =>
+      grantRole(
+        hre,
+        vault.connect(admin),
+        operation == CompoundV3StrategyMethods.harvestRewards ? "HARVEST_ROLE" : "SWAP_ADMIN_ROLE",
+        user
+      ),
   },
   {
     name: "CompoundV3Strategy",
@@ -201,10 +208,19 @@ const variants = [
         },
       });
       const strategy = await CompoundV3InvestStrategy.deploy(ADDRESSES.cUSDCv3, ADDRESSES.REWARDS);
-      const SingleStrategyERC4626 = await ethers.getContractFactory("SingleStrategyERC4626");
+      const MultiStrategyERC4626 = await ethers.getContractFactory("MultiStrategyERC4626");
       const vault = await hre.upgrades.deployProxy(
-        SingleStrategyERC4626,
-        [NAME, SYMB, adminAddr, ADDRESSES.USDC, await ethers.resolveAddress(strategy), encodeSwapConfig(swapConfig)],
+        MultiStrategyERC4626,
+        [
+          NAME,
+          SYMB,
+          adminAddr,
+          ADDRESSES.USDC,
+          [await ethers.resolveAddress(strategy)],
+          [encodeSwapConfig(swapConfig)],
+          [0],
+          [0],
+        ],
         {
           kind: "uups",
           unsafeAllow: ["delegatecall"],
@@ -217,7 +233,7 @@ const variants = [
 
       return {
         currency,
-        SingleStrategyERC4626,
+        MultiStrategyERC4626,
         CompoundV3InvestStrategy,
         swapConfig,
         vault,
@@ -233,14 +249,24 @@ const variants = [
     },
     harvestRewards: async (vault, amount) =>
       vault.forwardToStrategy(
+        0,
         CompoundV3StrategyMethods.harvestRewards,
         ethers.AbiCoder.defaultAbiCoder().encode(["uint256"], [amount])
       ),
-    accessControlCheck: async (action, user, role, contract) =>
-      expect(action).to.be.revertedWithACError(contract, user, role),
+    accessControlCheck: async (action, user, role, contract) => {
+      if (role === "SWAP_ADMIN_ROLE") {
+        role = await contract.getForwardToStrategyRole(0, CompoundV3StrategyMethods.setSwapConfig);
+      }
+      return expect(action).to.be.revertedWithACError(contract, user, role);
+    },
     getSwapConfig: async (vault, strategy) => strategy.getSwapConfig(vault),
     setSwapConfig: async (vault, swapConfig) =>
-      vault.forwardToStrategy(CompoundV3StrategyMethods.setSwapConfig, encodeSwapConfig(swapConfig)),
+      vault.forwardToStrategy(0, CompoundV3StrategyMethods.setSwapConfig, encodeSwapConfig(swapConfig)),
+    grantAccess: async (hre, operation, vault, admin, user) => {
+      await grantRole(hre, vault.connect(admin), "FORWARD_TO_STRATEGY_ROLE", user);
+      const specificRole = await vault.getForwardToStrategyRole(0, operation);
+      await grantRole(hre, vault.connect(admin), specificRole, user);
+    },
   },
   {
     name: "AAVEV3Strategy",
@@ -251,10 +277,19 @@ const variants = [
       const { currency, adminAddr, swapConfig, admin, lp, lp2, guardian, anon, swapLibrary } = await setUp();
       const AaveV3InvestStrategy = await ethers.getContractFactory("AaveV3InvestStrategy");
       const strategy = await AaveV3InvestStrategy.deploy(ADDRESSES.USDC, ADDRESSES.AAVEv3);
-      const SingleStrategyERC4626 = await ethers.getContractFactory("SingleStrategyERC4626");
+      const MultiStrategyERC4626 = await ethers.getContractFactory("MultiStrategyERC4626");
       const vault = await hre.upgrades.deployProxy(
-        SingleStrategyERC4626,
-        [NAME, SYMB, adminAddr, ADDRESSES.USDC, await ethers.resolveAddress(strategy), ethers.toUtf8Bytes("")],
+        MultiStrategyERC4626,
+        [
+          NAME,
+          SYMB,
+          adminAddr,
+          ADDRESSES.USDC,
+          [await ethers.resolveAddress(strategy)],
+          [ethers.toUtf8Bytes("")],
+          [0],
+          [0],
+        ],
         {
           kind: "uups",
           unsafeAllow: ["delegatecall"],
@@ -267,7 +302,7 @@ const variants = [
 
       return {
         currency,
-        SingleStrategyERC4626,
+        MultiStrategyERC4626,
         AaveV3InvestStrategy,
         swapConfig,
         vault,
@@ -305,10 +340,19 @@ const variants = [
         ADDRESSES.AAVEv3
       );
 
-      const SingleStrategyERC4626 = await ethers.getContractFactory("SingleStrategyERC4626");
+      const MultiStrategyERC4626 = await ethers.getContractFactory("MultiStrategyERC4626");
       const vault = await hre.upgrades.deployProxy(
-        SingleStrategyERC4626,
-        [NAME, SYMB, adminAddr, ADDRESSES.USDC, await ethers.resolveAddress(strategy), encodeSwapConfig(swapConfig)],
+        MultiStrategyERC4626,
+        [
+          NAME,
+          SYMB,
+          adminAddr,
+          ADDRESSES.USDC,
+          [await ethers.resolveAddress(strategy)],
+          [encodeSwapConfig(swapConfig)],
+          [0],
+          [0],
+        ],
         {
           kind: "uups",
           unsafeAllow: ["delegatecall"],
@@ -322,7 +366,7 @@ const variants = [
 
       return {
         currency,
-        SingleStrategyERC4626,
+        MultiStrategyERC4626,
         SwapStableAaveV3InvestStrategy,
         swapConfig,
         vault,
@@ -341,7 +385,12 @@ const variants = [
       expect(action).to.be.revertedWithACError(contract, user, role),
     getSwapConfig: async (vault, strategy) => strategy.getSwapConfig(vault),
     setSwapConfig: async (vault, swapConfig) =>
-      vault.forwardToStrategy(SwapStableAaveV3InvestStrategyMethods.setSwapConfig, encodeSwapConfig(swapConfig)),
+      vault.forwardToStrategy(0, SwapStableAaveV3InvestStrategyMethods.setSwapConfig, encodeSwapConfig(swapConfig)),
+    grantAccess: async (hre, operation, vault, admin, user) => {
+      await grantRole(hre, vault.connect(admin), "FORWARD_TO_STRATEGY_ROLE", user);
+      const specificRole = await vault.getForwardToStrategyRole(0, operation);
+      await grantRole(hre, vault.connect(admin), specificRole, user);
+    },
   },
 ];
 
@@ -372,25 +421,9 @@ variants.forEach((variant) => {
       );
     });
 
-    variant.tagit("Checks vault constructs with disabled initializer [!CompoundV3ERC4626]", async () => {
-      const { SingleStrategyERC4626, adminAddr, swapConfig, strategy } = await helpers.loadFixture(variant.fixture);
-      const newVault = await SingleStrategyERC4626.deploy();
-      await expect(newVault.deploymentTransaction()).to.emit(newVault, "Initialized");
-      await expect(
-        newVault.initialize(
-          "foo",
-          "bar",
-          adminAddr,
-          ADDRESSES.USDC,
-          await ethers.resolveAddress(strategy),
-          encodeSwapConfig(swapConfig)
-        )
-      ).to.be.revertedWithCustomError(SingleStrategyERC4626, "InvalidInitialization");
-    });
-
     variant.tagit("Checks reverts if extraData is sent on initialization [!CompoundV3ERC4626]", async () => {
       const {
-        SingleStrategyERC4626,
+        MultiStrategyERC4626,
         adminAddr,
         swapConfig,
         strategy,
@@ -403,8 +436,8 @@ variants.forEach((variant) => {
         variant.name !== "AAVEV3Strategy" ? encodeSwapConfig(swapConfig) + "f".repeat(64) : `0x${"f".repeat(64)}`;
       await expect(
         hre.upgrades.deployProxy(
-          SingleStrategyERC4626,
-          [NAME, SYMB, adminAddr, ADDRESSES.USDC, await ethers.resolveAddress(strategy), initData],
+          MultiStrategyERC4626,
+          [NAME, SYMB, adminAddr, ADDRESSES.USDC, [await ethers.resolveAddress(strategy)], [initData], [0], [0]],
           {
             kind: "uups",
             unsafeAllow: ["delegatecall"],
@@ -494,14 +527,33 @@ variants.forEach((variant) => {
       await expect(vault.connect(lp2).mint(_A(2000), lp2)).not.to.be.reverted;
 
       expect(await vault.totalAssets()).to.be.closeTo(_A(3000), MCENT);
-      await variant.accessControlCheck(
-        variant.harvestRewards(vault.connect(anon), _A(100)),
-        anon,
-        "HARVEST_ROLE",
-        strategy
-      );
-
-      await grantRole(hre, vault.connect(admin), "HARVEST_ROLE", anon);
+      if (variant.name === "CompoundV3ERC4626") {
+        await variant.accessControlCheck(
+          variant.harvestRewards(vault.connect(anon), _A(100)),
+          anon,
+          "HARVEST_ROLE",
+          strategy
+        );
+        await grantRole(hre, vault.connect(admin), "HARVEST_ROLE", anon);
+      } else {
+        // Using MultiStrategyERC4626
+        await variant.accessControlCheck(
+          variant.harvestRewards(vault.connect(anon), _A(100)),
+          anon,
+          "FORWARD_TO_STRATEGY_ROLE",
+          strategy
+        );
+        await grantRole(hre, vault.connect(admin), "FORWARD_TO_STRATEGY_ROLE", anon);
+        // Still fails because other role is missing
+        const specificRole = await vault.getForwardToStrategyRole(0, CompoundV3StrategyMethods.harvestRewards);
+        await variant.accessControlCheck(
+          variant.harvestRewards(vault.connect(anon), _A(100)),
+          anon,
+          specificRole,
+          strategy
+        );
+        await grantRole(hre, vault.connect(admin), specificRole, anon);
+      }
 
       await expect(variant.harvestRewards(vault.connect(anon), _A(100))).to.be.revertedWith("AS");
 
@@ -540,7 +592,9 @@ variants.forEach((variant) => {
       expect(await variant.getSwapConfig(vault, strategy)).to.deep.equal(swapConfig);
       await expect(vault.connect(lp).mint(_A(3000), lp)).not.to.be.reverted;
 
-      await grantRole(hre, vault.connect(admin), "HARVEST_ROLE", anon);
+      if (variant.name !== "SwapStableAAVEV3Strategy") {
+        await variant.grantAccess(hre, CompoundV3StrategyMethods.harvestRewards, vault, admin, anon);
+      }
 
       await helpers.time.increase(MONTH);
       const assets = await vault.totalAssets();
@@ -553,14 +607,35 @@ variants.forEach((variant) => {
         );
       }
 
-      await variant.accessControlCheck(
-        variant.setSwapConfig(vault.connect(anon), swapConfig),
-        anon,
-        "SWAP_ADMIN_ROLE",
-        strategy
-      );
-
-      await grantRole(hre, vault.connect(admin), "SWAP_ADMIN_ROLE", anon);
+      if (variant.name !== "SwapStableAAVEV3Strategy") {
+        await variant.accessControlCheck(
+          variant.setSwapConfig(vault.connect(anon), swapConfig),
+          anon,
+          "SWAP_ADMIN_ROLE",
+          vault
+        );
+        await variant.grantAccess(hre, CompoundV3StrategyMethods.setSwapConfig, vault, admin, anon);
+      } else {
+        await variant.accessControlCheck(
+          variant.setSwapConfig(vault.connect(anon), swapConfig),
+          anon,
+          "FORWARD_TO_STRATEGY_ROLE",
+          vault
+        );
+        await grantRole(hre, vault.connect(admin), "FORWARD_TO_STRATEGY_ROLE", anon);
+        // Still fails because other role is missing
+        const specificRole = await vault.getForwardToStrategyRole(
+          0,
+          SwapStableAaveV3InvestStrategyMethods.setSwapConfig
+        );
+        await variant.accessControlCheck(
+          variant.setSwapConfig(vault.connect(anon), swapConfig),
+          anon,
+          specificRole,
+          vault
+        );
+        await grantRole(hre, vault.connect(admin), specificRole, anon);
+      }
 
       // Check validates new config
       await expect(
@@ -731,9 +806,9 @@ variants.forEach((variant) => {
         await helpers.loadFixture(variant.fixture);
 
       // Just to increase coverage, I check forwardEntryPoint reverts with wrong input
-      await expect(vault.forwardToStrategy(123, ethers.toUtf8Bytes(""))).to.be.reverted;
+      await expect(vault.forwardToStrategy(0, 123, ethers.toUtf8Bytes(""))).to.be.reverted;
 
-      expect(await vault.strategy()).to.equal(strategy);
+      expect((await vault.strategies())[0]).to.equal(strategy);
       await expect(vault.connect(lp).mint(_A(3000), lp)).not.to.be.reverted;
 
       expect(await vault.totalAssets()).to.closeTo(_A(3000), MCENT);
@@ -741,11 +816,12 @@ variants.forEach((variant) => {
       expect(await vault.maxWithdraw(lp)).to.closeTo(_A(3000), MCENT);
 
       await expect(
-        vault.connect(anon).setStrategy(ZeroAddress, encodeSwapConfig(swapConfig), false)
-      ).to.be.revertedWithACError(strategy, anon, "SET_STRATEGY_ROLE");
-      await grantRole(hre, vault.connect(admin), "SET_STRATEGY_ROLE", anon);
+        vault.connect(anon).replaceStrategy(0, ZeroAddress, encodeSwapConfig(swapConfig), false)
+      ).to.be.revertedWithACError(strategy, anon, "STRATEGY_ADMIN_ROLE");
+      await grantRole(hre, vault.connect(admin), "STRATEGY_ADMIN_ROLE", anon);
 
-      await expect(vault.connect(anon).setStrategy(ZeroAddress, encodeSwapConfig(swapConfig), false)).to.be.reverted;
+      await expect(vault.connect(anon).replaceStrategy(0, ZeroAddress, encodeSwapConfig(swapConfig), false)).to.be
+        .reverted;
 
       // If I pause withdraw, it can't withdraw and setStrategy fails
       await helpers.impersonateAccount(ADDRESSES.cUSDCv3_GUARDIAN);
@@ -759,7 +835,7 @@ variants.forEach((variant) => {
       expect(await vault.maxWithdraw(lp)).to.equal(0);
 
       await expect(
-        vault.connect(anon).setStrategy(strategy, encodeSwapConfig(swapConfig), false)
+        vault.connect(anon).replaceStrategy(0, strategy, encodeSwapConfig(swapConfig), false)
       ).to.be.revertedWithCustomError(cUSDCv3, "Paused");
 
       const DummyInvestStrategy = await ethers.getContractFactory("DummyInvestStrategy");
@@ -767,7 +843,7 @@ variants.forEach((variant) => {
       const dummyStrategy = await DummyInvestStrategy.deploy(ADDRESSES.USDC);
 
       // But if I force, it works
-      await expect(vault.connect(anon).setStrategy(otherStrategy, encodeSwapConfig(swapConfig), true))
+      await expect(vault.connect(anon).replaceStrategy(0, otherStrategy, encodeSwapConfig(swapConfig), true))
         .to.emit(vault, "StrategyChanged")
         .withArgs(strategy, otherStrategy)
         .to.emit(vault, "WithdrawFailed")
@@ -776,7 +852,7 @@ variants.forEach((variant) => {
       expect(await vault.totalAssets()).to.closeTo(_A(3000), CENT);
 
       // Setting a dummyStrategy returns totalAssets == 0 because can't see the assets in Compound
-      let tx = await vault.connect(anon).setStrategy(dummyStrategy, encodeDummyStorage({}), true);
+      let tx = await vault.connect(anon).replaceStrategy(0, dummyStrategy, encodeDummyStorage({}), true);
       await expect(tx)
         .to.emit(vault, "StrategyChanged")
         .withArgs(otherStrategy, dummyStrategy)
@@ -791,7 +867,7 @@ variants.forEach((variant) => {
       expect(await dummyStrategy.getFail(vault)).to.deep.equal([false, false, false, false]);
 
       // Setting again `strategy` works fine
-      await expect(vault.connect(anon).setStrategy(strategy, encodeSwapConfig(swapConfig), false))
+      await expect(vault.connect(anon).replaceStrategy(0, strategy, encodeSwapConfig(swapConfig), false))
         .to.emit(vault, "StrategyChanged")
         .withArgs(dummyStrategy, strategy);
       expect(await vault.totalAssets()).to.closeTo(_A(3000), CENT);
@@ -801,7 +877,7 @@ variants.forEach((variant) => {
       await cUSDCv3.connect(compGuardian).pause(false, false, false, false, false);
 
       // Setting a dummyStrategy sends the assets to the vault
-      tx = await vault.connect(anon).setStrategy(dummyStrategy, encodeDummyStorage({}), false);
+      tx = await vault.connect(anon).replaceStrategy(0, dummyStrategy, encodeDummyStorage({}), false);
       await expect(tx)
         .to.emit(vault, "StrategyChanged")
         .withArgs(strategy, dummyStrategy)
@@ -830,9 +906,9 @@ variants.forEach((variant) => {
       } = await helpers.loadFixture(variant.fixture);
 
       // Just to increase coverage, I check forwardEntryPoint reverts
-      await expect(vault.forwardToStrategy(123, ethers.toUtf8Bytes(""))).to.be.reverted;
+      await expect(vault.forwardToStrategy(0, 123, ethers.toUtf8Bytes(""))).to.be.reverted;
 
-      expect(await vault.strategy()).to.equal(strategy);
+      expect((await vault.strategies())[0]).to.equal(strategy);
       await expect(vault.connect(lp).mint(_A(3000), lp)).not.to.be.reverted;
 
       expect(await vault.totalAssets()).to.closeTo(_A(3000), _A(5));
@@ -840,11 +916,11 @@ variants.forEach((variant) => {
       expect(await vault.maxWithdraw(lp)).to.closeTo(_A(3000), _A(5));
 
       await expect(
-        vault.connect(anon).setStrategy(ZeroAddress, ethers.toUtf8Bytes(""), false)
-      ).to.be.revertedWithACError(strategy, anon, "SET_STRATEGY_ROLE");
-      await grantRole(hre, vault.connect(admin), "SET_STRATEGY_ROLE", anon);
+        vault.connect(anon).replaceStrategy(0, ZeroAddress, ethers.toUtf8Bytes(""), false)
+      ).to.be.revertedWithACError(strategy, anon, "STRATEGY_ADMIN_ROLE");
+      await grantRole(hre, vault.connect(admin), "STRATEGY_ADMIN_ROLE", anon);
 
-      await expect(vault.connect(anon).setStrategy(ZeroAddress, ethers.toUtf8Bytes(""), false)).to.be.reverted;
+      await expect(vault.connect(anon).replaceStrategy(0, ZeroAddress, ethers.toUtf8Bytes(""), false)).to.be.reverted;
 
       // If I pause withdraw, it can't withdraw and setStrategy fails
       await helpers.impersonateAccount(ADDRESSES.AAVEPoolAdmin);
@@ -858,7 +934,7 @@ variants.forEach((variant) => {
       expect(await vault.maxRedeem(lp)).to.equal(0);
       expect(await vault.maxWithdraw(lp)).to.equal(0);
 
-      await expect(vault.connect(anon).setStrategy(strategy, ethers.toUtf8Bytes(""), false)).to.be.revertedWith(
+      await expect(vault.connect(anon).replaceStrategy(0, strategy, ethers.toUtf8Bytes(""), false)).to.be.revertedWith(
         "29" // RESERVE_PAUSED
       );
 
@@ -881,7 +957,7 @@ variants.forEach((variant) => {
 
       // But if I force, it works
 
-      await expect(vault.connect(anon).setStrategy(otherStrategy, initConfig, true))
+      await expect(vault.connect(anon).replaceStrategy(0, otherStrategy, initConfig, true))
         .to.emit(vault, "StrategyChanged")
         .withArgs(strategy, otherStrategy)
         .to.emit(vault, "WithdrawFailed");
@@ -889,7 +965,7 @@ variants.forEach((variant) => {
       expect(await vault.totalAssets()).to.closeTo(_A(3000), _A(5));
 
       // Setting a dummyStrategy returns totalAssets == 0 because can't see the assets in Compound
-      let tx = await vault.connect(anon).setStrategy(dummyStrategy, encodeDummyStorage({}), true);
+      let tx = await vault.connect(anon).replaceStrategy(0, dummyStrategy, encodeDummyStorage({}), true);
       await expect(tx)
         .to.emit(vault, "StrategyChanged")
         .withArgs(otherStrategy, dummyStrategy)
@@ -903,7 +979,7 @@ variants.forEach((variant) => {
       expect(await dummyStrategy.getFail(vault)).to.deep.equal([false, false, false, false]);
 
       // Setting again `strategy` works fine
-      await expect(vault.connect(anon).setStrategy(strategy, initConfig, false))
+      await expect(vault.connect(anon).replaceStrategy(0, strategy, initConfig, false))
         .to.emit(vault, "StrategyChanged")
         .withArgs(dummyStrategy, strategy);
       expect(await vault.totalAssets()).to.closeTo(_A(3000), _A(5));
@@ -912,7 +988,7 @@ variants.forEach((variant) => {
       await aaveConfig.connect(aaveAdmin).setReservePause(variant.supplyToken, false);
 
       // Setting a dummyStrategy sends the assets to the vault
-      tx = await vault.connect(anon).setStrategy(dummyStrategy, encodeDummyStorage({}), false);
+      tx = await vault.connect(anon).replaceStrategy(0, dummyStrategy, encodeDummyStorage({}), false);
       await expect(tx)
         .to.emit(vault, "StrategyChanged")
         .withArgs(strategy, dummyStrategy)

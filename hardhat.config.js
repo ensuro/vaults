@@ -15,6 +15,7 @@ module.exports = {
         enabled: true,
         runs: 200,
       },
+      evmVersion: "cancun",
     },
   },
   networks: {

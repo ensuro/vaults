@@ -152,6 +152,10 @@ describe("MultiStrategy Integration fork tests", function () {
     // Take the price from the oracle (8 decimals) and add 10 more to convert it to wad
     const compUSD = (await COMPPrice.latestRoundData())[1] * 10n ** 10n;
 
+    await vault.connect(admin).grantRole(getRole("FORWARD_TO_STRATEGY_ROLE"), admin);
+    const specificRole = await vault.getForwardToStrategyRole(1, CompoundV3StrategyMethods.harvestRewards);
+    await vault.connect(admin).grantRole(specificRole, admin);
+
     await vault
       .connect(admin)
       .forwardToStrategy(

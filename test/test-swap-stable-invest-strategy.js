@@ -317,11 +317,13 @@ variants.forEach((variant) => {
         [modifiedSwapConfig]
       );
 
-      await expect(
-        vault.connect(anon).forwardToStrategy(SwapStableInvestStrategyMethods.setSwapConfig, newSwapConfigAsBytes)
-      ).to.be.revertedWithACError(strategy, anon, "SWAP_ADMIN_ROLE");
-
-      await vault.connect(admin).grantRole(await getRole("SWAP_ADMIN_ROLE"), anon);
+      /// Access validations no longer implemented in the strategy they should be implemented in the vault
+      /// contract
+      ///    await expect(
+      ///      vault.connect(anon).forwardToStrategy(SwapStableInvestStrategyMethods.setSwapConfig, newSwapConfigAsBytes)
+      ///    ).to.be.revertedWithACError(strategy, anon, "SWAP_ADMIN_ROLE");
+      ///
+      ///    await vault.connect(admin).grantRole(await getRole("SWAP_ADMIN_ROLE"), anon);
 
       let tx = await vault
         .connect(anon)

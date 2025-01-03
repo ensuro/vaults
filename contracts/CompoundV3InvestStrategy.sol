@@ -4,7 +4,6 @@ pragma solidity ^0.8.0;
 import {ICompoundV3} from "./interfaces/ICompoundV3.sol";
 import {ICometRewards} from "./interfaces/ICometRewards.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
-import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {SwapLibrary} from "@ensuro/swaplibrary/contracts/SwapLibrary.sol";
 import {IInvestStrategy} from "./interfaces/IInvestStrategy.sol";
 import {StorageSlot} from "@openzeppelin/contracts/utils/StorageSlot.sol";
@@ -52,12 +51,6 @@ contract CompoundV3InvestStrategy is IInvestStrategy {
     _;
   }
 
-  modifier onlyRole(bytes32 role) {
-    if (!IAccessControl(address(this)).hasRole(role, msg.sender))
-      revert AccessControlUnauthorizedAccount(msg.sender, role);
-    _;
-  }
-
   constructor(ICompoundV3 cToken_, ICometRewards rewardsManager_) {
     _cToken = cToken_;
     _rewardsManager = rewardsManager_;
@@ -65,7 +58,7 @@ contract CompoundV3InvestStrategy is IInvestStrategy {
   }
 
   function connect(bytes memory initData) external virtual override onlyDelegCall {
-    _setSwapConfigNoCheck(SwapLibrary.SwapConfig(SwapLibrary.SwapProtocol.undefined, 0, bytes("")), initData);
+    _setSwapConfig(SwapLibrary.SwapConfig(SwapLibrary.SwapProtocol.undefined, 0, bytes("")), initData);
   }
 
   function disconnect(bool force) external virtual override onlyDelegCall {
@@ -103,7 +96,7 @@ contract CompoundV3InvestStrategy is IInvestStrategy {
     _cToken.supply(_baseToken, assets);
   }
 
-  function _harvestRewards(uint256 price) internal onlyRole(HARVEST_ROLE) {
+  function _harvestRewards(uint256 price) internal {
     (address reward, , ) = _rewardsManager.rewardConfig(address(_cToken));
     if (reward == address(0)) return;
     _rewardsManager.claim(address(_cToken), address(this), true);
@@ -119,14 +112,7 @@ contract CompoundV3InvestStrategy is IInvestStrategy {
     emit RewardsClaimed(reward, earned, reinvestAmount);
   }
 
-  function _setSwapConfig(bytes memory newSwapConfigAsBytes) internal onlyRole(SWAP_ADMIN_ROLE) {
-    _setSwapConfigNoCheck(_getSwapConfig(address(this)), newSwapConfigAsBytes);
-  }
-
-  function _setSwapConfigNoCheck(
-    SwapLibrary.SwapConfig memory oldSwapConfig,
-    bytes memory newSwapConfigAsBytes
-  ) internal {
+  function _setSwapConfig(SwapLibrary.SwapConfig memory oldSwapConfig, bytes memory newSwapConfigAsBytes) internal {
     SwapLibrary.SwapConfig memory swapConfig = abi.decode(newSwapConfigAsBytes, (SwapLibrary.SwapConfig));
     swapConfig.validate();
     if (abi.encode(swapConfig).length != newSwapConfigAsBytes.length) revert NoExtraDataAllowed();
@@ -140,7 +126,7 @@ contract CompoundV3InvestStrategy is IInvestStrategy {
       uint256 price = abi.decode(params, (uint256));
       _harvestRewards(price);
     } else if (checkedMethod == ForwardMethods.setSwapConfig) {
-      _setSwapConfig(params);
+      _setSwapConfig(_getSwapConfig(address(this)), params);
     }
     // Show never reach to this revert, since method should be one of the enum values but leave it in case
     // we add new values in the enum and we forgot to add them here
