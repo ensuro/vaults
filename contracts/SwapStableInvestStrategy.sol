@@ -32,8 +32,6 @@ contract SwapStableInvestStrategy is IInvestStrategy {
 
   event SwapConfigChanged(SwapLibrary.SwapConfig oldConfig, SwapLibrary.SwapConfig newConfig);
 
-  // From OZ v5
-  error AccessControlUnauthorizedAccount(address account, bytes32 neededRole);
   error CanBeCalledOnlyThroughDelegateCall();
   error CannotDisconnectWithAssets();
   error NoExtraDataAllowed();

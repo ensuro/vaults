@@ -971,7 +971,7 @@ variants.forEach((variant) => {
 
       await expect(
         vault.connect(anon).replaceStrategy(0, ZeroAddress, encodeSwapConfig(swapConfig), false)
-      ).to.be.revertedWithACError(strategy, anon, "STRATEGY_ADMIN_ROLE");
+      ).to.be.revertedWithACError(vault, anon, "STRATEGY_ADMIN_ROLE");
       await grantRole(hre, vault.connect(admin), "STRATEGY_ADMIN_ROLE", anon);
 
       await expect(vault.connect(anon).replaceStrategy(0, ZeroAddress, encodeSwapConfig(swapConfig), false)).to.be
@@ -1071,7 +1071,7 @@ variants.forEach((variant) => {
 
       await expect(
         vault.connect(anon).replaceStrategy(0, ZeroAddress, ethers.toUtf8Bytes(""), false)
-      ).to.be.revertedWithACError(strategy, anon, "STRATEGY_ADMIN_ROLE");
+      ).to.be.revertedWithACError(vault, anon, "STRATEGY_ADMIN_ROLE");
       await grantRole(hre, vault.connect(admin), "STRATEGY_ADMIN_ROLE", anon);
 
       await expect(vault.connect(anon).replaceStrategy(0, ZeroAddress, ethers.toUtf8Bytes(""), false)).to.be.reverted;
