@@ -24,8 +24,6 @@ contract AaveV3InvestStrategy is IInvestStrategy {
   IPool internal immutable _aave;
   IERC20 internal immutable _asset;
 
-  // From OZ v5
-  error AccessControlUnauthorizedAccount(address account, bytes32 neededRole);
   error CanBeCalledOnlyThroughDelegateCall();
   error CannotDisconnectWithAssets();
   error NoExtraDataAllowed();

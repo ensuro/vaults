@@ -149,6 +149,16 @@ abstract contract MSVBase is IExposeStorage {
   }
 
   /**
+   * @dev Checks the caller can execute this forwardToStrategy call, otherwise reverts
+   *
+   * @param strategyIndex The index of the strategy in the _strategies array
+   * @param method Id of the method to call. Is recommended that the strategy defines an enum with the methods that
+   *               can be called externally and validates this value.
+   * @param extraData Additional parameters sent to the method.
+   */
+  function _checkForwardToStrategy(uint8 strategyIndex, uint8 method, bytes memory extraData) internal view virtual;
+
+  /**
    * @dev Used to call specific methods on the strategies. Anyone can call this method, is responsability of the
    *      IInvestStrategy to check access permissions when needed.
    * @param strategyIndex The index of the strategy in the _strategies array
@@ -162,6 +172,7 @@ abstract contract MSVBase is IExposeStorage {
     uint8 method,
     bytes memory extraData
   ) external virtual returns (bytes memory) {
+    _checkForwardToStrategy(strategyIndex, method, extraData);
     IInvestStrategy strategy = _strategies[strategyIndex];
     if (address(strategy) == address(0)) revert InvalidStrategy();
     return _strategies[strategyIndex].dcForward(method, extraData);

@@ -2,7 +2,6 @@
 pragma solidity ^0.8.0;
 
 import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
-import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {SwapLibrary} from "@ensuro/swaplibrary/contracts/SwapLibrary.sol";
 import {IInvestStrategy} from "./interfaces/IInvestStrategy.sol";
 import {StorageSlot} from "@openzeppelin/contracts/utils/StorageSlot.sol";
@@ -33,8 +32,6 @@ contract SwapStableInvestStrategy is IInvestStrategy {
 
   event SwapConfigChanged(SwapLibrary.SwapConfig oldConfig, SwapLibrary.SwapConfig newConfig);
 
-  // From OZ v5
-  error AccessControlUnauthorizedAccount(address account, bytes32 neededRole);
   error CanBeCalledOnlyThroughDelegateCall();
   error CannotDisconnectWithAssets();
   error NoExtraDataAllowed();
@@ -45,12 +42,6 @@ contract SwapStableInvestStrategy is IInvestStrategy {
 
   modifier onlyDelegCall() {
     if (address(this) == __self) revert CanBeCalledOnlyThroughDelegateCall();
-    _;
-  }
-
-  modifier onlyRole(bytes32 role) {
-    if (!IAccessControl(address(this)).hasRole(role, msg.sender))
-      revert AccessControlUnauthorizedAccount(msg.sender, role);
     _;
   }
 
@@ -72,7 +63,7 @@ contract SwapStableInvestStrategy is IInvestStrategy {
   }
 
   function connect(bytes memory initData) external virtual override onlyDelegCall {
-    _setSwapConfigNoCheck(SwapLibrary.SwapConfig(SwapLibrary.SwapProtocol.undefined, 0, bytes("")), initData);
+    _setSwapConfig(SwapLibrary.SwapConfig(SwapLibrary.SwapProtocol.undefined, 0, bytes("")), initData);
   }
 
   function disconnect(bool force) external virtual override onlyDelegCall {
@@ -135,14 +126,7 @@ contract SwapStableInvestStrategy is IInvestStrategy {
     swapConfig.exactInput(address(_asset), address(_investAsset), assets, _price);
   }
 
-  function _setSwapConfig(bytes memory newSwapConfigAsBytes) internal onlyRole(SWAP_ADMIN_ROLE) {
-    _setSwapConfigNoCheck(_getSwapConfig(address(this)), newSwapConfigAsBytes);
-  }
-
-  function _setSwapConfigNoCheck(
-    SwapLibrary.SwapConfig memory oldSwapConfig,
-    bytes memory newSwapConfigAsBytes
-  ) internal {
+  function _setSwapConfig(SwapLibrary.SwapConfig memory oldSwapConfig, bytes memory newSwapConfigAsBytes) internal {
     SwapLibrary.SwapConfig memory swapConfig = abi.decode(newSwapConfigAsBytes, (SwapLibrary.SwapConfig));
     swapConfig.validate();
     if (abi.encode(swapConfig).length != newSwapConfigAsBytes.length) revert NoExtraDataAllowed();
@@ -153,7 +137,7 @@ contract SwapStableInvestStrategy is IInvestStrategy {
   function forwardEntryPoint(uint8 method, bytes memory params) external onlyDelegCall returns (bytes memory) {
     ForwardMethods checkedMethod = ForwardMethods(method);
     if (checkedMethod == ForwardMethods.setSwapConfig) {
-      _setSwapConfig(params);
+      _setSwapConfig(_getSwapConfig(address(this)), params);
     }
     // Should never reach to this revert, since method should be one of the enum values but leave it in case
     // we add new values in the enum and we forgot to add them here

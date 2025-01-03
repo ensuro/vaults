@@ -3,11 +3,13 @@ pragma solidity ^0.8.0;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
+import {IAccessManager} from "@openzeppelin/contracts/access/manager/IAccessManager.sol";
 import {ERC4626Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {MSVBase} from "./MSVBase.sol";
 import {IInvestStrategy} from "./interfaces/IInvestStrategy.sol";
+import {AccessManagedProxy} from "./AccessManagedProxy.sol";
 
 /**
  * @title AccessManagedMSV
@@ -121,5 +123,33 @@ contract AccessManagedMSV is MSVBase, UUPSUpgradeable, ERC4626Upgradeable {
     // Transfers the assets from the caller and supplies to compound
     super._deposit(caller, receiver, assets, shares);
     _depositToStrategies(assets);
+  }
+
+  /**
+   * @dev Returns the selector used to define the role required to call forwardToStrategy on a given strategy and
+   *      method
+   *
+   * @param strategyIndex The index of the strategy in the _strategies array
+   * @param method Id of the method to call. Is recommended that the strategy defines an enum with the methods that
+   *               can be called externally and validates this value.
+   * @return selector The bytes4 selector required to execute the call (will be used with target=address(this))
+   */
+  function getForwardToStrategySelector(uint8 strategyIndex, uint8 method) public view returns (bytes4 selector) {
+    // I assemble a fake selector combining the address of the strategy, the index, and the method called
+    address strategy = address(_strategies[strategyIndex]);
+    return (bytes4(bytes1(strategyIndex)) >> 8) ^ (bytes4(bytes1(method))) ^ bytes4(bytes20(strategy));
+  }
+
+  /// @inheritdoc MSVBase
+  function _checkForwardToStrategy(uint8 strategyIndex, uint8 method, bytes memory) internal view override {
+    // To call forwardToStrategy, besides the access the method, we will check with the ACCESS_MANAGER we
+    // canCall()
+    IAccessManager acMgr = AccessManagedProxy(payable(address(this))).ACCESS_MANAGER();
+    (bool immediate, ) = acMgr.canCall(msg.sender, address(this), getForwardToStrategySelector(strategyIndex, method));
+    // This only works when immediate == true, so timelocks can't be applied on this extra permission,
+    // only on the forwardToStrategy call.
+    // In the future we might use consumeScheduledOp flow to implement specific delays for specific
+    // forward calls
+    if (!immediate) revert AccessManagedProxy.AccessManagedUnauthorized(msg.sender);
   }
 }

@@ -26,6 +26,7 @@ contract MultiStrategyERC4626 is MSVBase, PermissionedERC4626 {
   bytes32 public constant STRATEGY_ADMIN_ROLE = keccak256("STRATEGY_ADMIN_ROLE");
   bytes32 public constant QUEUE_ADMIN_ROLE = keccak256("QUEUE_ADMIN_ROLE");
   bytes32 public constant REBALANCER_ROLE = keccak256("REBALANCER_ROLE");
+  bytes32 public constant FORWARD_TO_STRATEGY_ROLE = keccak256("FORWARD_TO_STRATEGY_ROLE");
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor() {
@@ -177,4 +178,35 @@ contract MultiStrategyERC4626 is MSVBase, PermissionedERC4626 {
   ) public override onlyRole(REBALANCER_ROLE) returns (uint256) {
     return super.rebalance(strategyFromIdx, strategyToIdx, amount);
   }
+
+  /**
+   * @dev Returns the AccessControl role required to call forwardToStrategy on a given strategy and method
+   *
+   * @param strategyIndex The index of the strategy in the _strategies array
+   * @param method Id of the method to call. Is recommended that the strategy defines an enum with the methods that
+   *               can be called externally and validates this value.
+   * @return role The bytes32 role required to execute the call
+   */
+  function getForwardToStrategyRole(uint8 strategyIndex, uint8 method) public view returns (bytes32 role) {
+    address strategy = address(_strategies[strategyIndex]);
+    return
+      bytes32(bytes20(strategy)) ^
+      (bytes32(bytes1(method)) >> 160) ^
+      (bytes32(bytes1(strategyIndex)) >> 168) ^
+      FORWARD_TO_STRATEGY_ROLE;
+  }
+
+  /// @inheritdoc MSVBase
+  // solhint-disable no-empty-blocks
+  function _checkForwardToStrategy(
+    uint8 strategyIndex,
+    uint8 method,
+    bytes memory
+  )
+    internal
+    view
+    override
+    onlyRole(FORWARD_TO_STRATEGY_ROLE)
+    onlyRole(getForwardToStrategyRole(strategyIndex, method))
+  {}
 }

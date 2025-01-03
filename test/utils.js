@@ -60,6 +60,13 @@ Assertion.addMethod("revertedWithAMError", function (contract, user) {
   return new Assertion(this._obj).to.be.revertedWithCustomError(contract, "AccessManagedUnauthorized").withArgs(user);
 });
 
+async function setupAMRole(acMgr, vault, roles, role, methods) {
+  await acMgr.labelRole(roles[role], role);
+  for (const method of methods) {
+    await acMgr.setTargetFunctionRole(vault, [vault.interface.getFunction(method).selector], roles[role]);
+  }
+}
+
 module.exports = {
   encodeDummyStorage,
   encodeSwapConfig,
@@ -67,4 +74,5 @@ module.exports = {
   tagit,
   makeAllViewsPublic,
   mergeFragments,
+  setupAMRole,
 };
