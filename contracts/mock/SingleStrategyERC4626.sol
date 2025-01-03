@@ -7,10 +7,10 @@ import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {StorageSlot} from "@openzeppelin/contracts/utils/StorageSlot.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
-import {PermissionedERC4626} from "./PermissionedERC4626.sol";
-import {IInvestStrategy} from "./interfaces/IInvestStrategy.sol";
-import {IExposeStorage} from "./interfaces/IExposeStorage.sol";
-import {InvestStrategyClient} from "./InvestStrategyClient.sol";
+import {PermissionedERC4626} from "../PermissionedERC4626.sol";
+import {IInvestStrategy} from "../interfaces/IInvestStrategy.sol";
+import {IExposeStorage} from "../interfaces/IExposeStorage.sol";
+import {InvestStrategyClient} from "../InvestStrategyClient.sol";
 
 /**
  * @title SingleStrategyERC4626
@@ -21,6 +21,9 @@ import {InvestStrategyClient} from "./InvestStrategyClient.sol";
  *
  *      The code of the IInvestStrategy is called using delegatecall, so it has full control over the assets and
  *      storage of this contract, so you must be very careful the kind of IInvestStrategy is plugged.
+ *
+ * WARNING: this contract isn't fully tested and has known errors (lack of access validation on forwardToStrategy),
+ *          so this is not intended to be used in production. Is just for the purpose of testing strategies.
  *
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
