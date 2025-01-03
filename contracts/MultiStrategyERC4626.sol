@@ -202,14 +202,11 @@ contract MultiStrategyERC4626 is MSVBase, PermissionedERC4626 {
     uint8 strategyIndex,
     uint8 method,
     bytes memory
-  ) internal view override onlyRole(getForwardToStrategyRole(strategyIndex, method)) {}
-
-  /// @inheritdoc MSVBase
-  function forwardToStrategy(
-    uint8 strategyIndex,
-    uint8 method,
-    bytes memory extraData
-  ) public override onlyRole(FORWARD_TO_STRATEGY_ROLE) returns (bytes memory) {
-    return super.forwardToStrategy(strategyIndex, method, extraData);
-  }
+  )
+    internal
+    view
+    override
+    onlyRole(FORWARD_TO_STRATEGY_ROLE)
+    onlyRole(getForwardToStrategyRole(strategyIndex, method))
+  {}
 }

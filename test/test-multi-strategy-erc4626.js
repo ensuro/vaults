@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { _A, getRole } = require("@ensuro/utils/js/utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
-const { encodeDummyStorage, dummyStorage, tagit, makeAllViewsPublic, mergeFragments } = require("./utils");
+const { encodeDummyStorage, dummyStorage, tagit, makeAllViewsPublic, mergeFragments, setupAMRole } = require("./utils");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
@@ -42,13 +42,6 @@ async function setUp() {
     guardian,
     admin,
   };
-}
-
-async function setupAMRole(acMgr, vault, roles, role, methods) {
-  await acMgr.labelRole(roles[role], role);
-  for (const method of methods) {
-    await acMgr.setTargetFunctionRole(vault, [vault.interface.getFunction(method).selector], roles[role]);
-  }
 }
 
 const variants = [

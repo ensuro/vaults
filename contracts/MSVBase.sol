@@ -171,7 +171,7 @@ abstract contract MSVBase is IExposeStorage {
     uint8 strategyIndex,
     uint8 method,
     bytes memory extraData
-  ) public virtual returns (bytes memory) {
+  ) external virtual returns (bytes memory) {
     _checkForwardToStrategy(strategyIndex, method, extraData);
     IInvestStrategy strategy = _strategies[strategyIndex];
     if (address(strategy) == address(0)) revert InvalidStrategy();
