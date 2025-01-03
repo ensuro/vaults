@@ -11,7 +11,7 @@ describe("Storage Gaps", () => {
     it(`${contract} has a proper storage gap`, async () => {
       const { storage, types } = await getStorageLayout(
         hre,
-        `contracts/${contract}.sol`,
+        contract === "SingleStrategyERC4626" ? `contracts/mock/${contract}.sol` : `contracts/${contract}.sol`,
         contract.split("/").slice(-1)[0]
       );
 
