@@ -212,6 +212,112 @@ const variants = [
       };
     },
   },
+  {
+    name: "AMProxy+OutflowLimitedAMMSV",
+    tagit: tagit,
+    accessManaged: true,
+    accessError: "revertedWithAMError",
+    fixture: async () => {
+      const ret = await setUp();
+      const { strategies, admin, currency } = ret;
+      const OutflowLimitedAMMSV = await ethers.getContractFactory("OutflowLimitedAMMSV");
+      const AccessManagedProxy = await ethers.getContractFactory("AccessManagedProxy");
+      const AccessManager = await ethers.getContractFactory("AccessManager");
+      const acMgr = await AccessManager.deploy(admin);
+      const msv = await OutflowLimitedAMMSV.deploy();
+      const combinedABI = mergeFragments(
+        OutflowLimitedAMMSV.interface.fragments,
+        AccessManagedProxy.interface.fragments
+      );
+      const roles = {
+        LP_ROLE: 1,
+        LOM_ADMIN: 2,
+        REBALANCER_ROLE: 3,
+        STRATEGY_ADMIN_ROLE: 4,
+        QUEUE_ADMIN_ROLE: 5,
+        FORWARD_TO_STRATEGY_ROLE: 6,
+      };
+
+      async function deployVault(strategies_, initStrategyDatas, depositQueue, withdrawQueue) {
+        if (strategies_ === undefined) {
+          strategies_ = strategies;
+        } else if (typeof strategies_ == "number") {
+          strategies_ = strategies.slice(0, strategies_);
+        }
+        if (initStrategyDatas === undefined) {
+          initStrategyDatas = strategies_.map(() => encodeDummyStorage({}));
+        }
+        if (depositQueue === undefined) {
+          depositQueue = strategies_.map((_, i) => i);
+        }
+        if (withdrawQueue === undefined) {
+          withdrawQueue = strategies_.map((_, i) => i);
+        }
+        const initializeData = msv.interface.encodeFunctionData("initialize", [
+          NAME,
+          SYMB,
+          await ethers.resolveAddress(currency),
+          await Promise.all(strategies_.map(ethers.resolveAddress)),
+          initStrategyDatas,
+          depositQueue,
+          withdrawQueue,
+        ]);
+        const proxy = await AccessManagedProxy.deploy(msv, initializeData, acMgr);
+        const deploymentTransaction = proxy.deploymentTransaction();
+        const vault = await ethers.getContractAt(combinedABI, await ethers.resolveAddress(proxy));
+        vault.deploymentTransaction = () => deploymentTransaction;
+        await makeAllViewsPublic(acMgr.connect(admin), vault);
+
+        await setupAMRole(acMgr.connect(admin), vault, roles, "LP_ROLE", [
+          "withdraw",
+          "deposit",
+          "mint",
+          "redeem",
+          "transfer",
+        ]);
+        await setupAMRole(acMgr.connect(admin), vault, roles, "STRATEGY_ADMIN_ROLE", [
+          "addStrategy",
+          "replaceStrategy",
+          "removeStrategy",
+        ]);
+
+        await setupAMRole(acMgr.connect(admin), vault, roles, "QUEUE_ADMIN_ROLE", [
+          "changeDepositQueue",
+          "changeWithdrawQueue",
+        ]);
+
+        await setupAMRole(acMgr.connect(admin), vault, roles, "REBALANCER_ROLE", ["rebalance"]);
+
+        await setupAMRole(acMgr.connect(admin), vault, roles, "FORWARD_TO_STRATEGY_ROLE", ["forwardToStrategy"]);
+
+        await vault.connect(admin).setupOutflowLimit(3600 * 24, _A(1));
+
+        return vault;
+      }
+
+      async function grantRole(_, role, user) {
+        const roleId = role.startsWith("0x") ? role : roles[role];
+        if (roleId === undefined) throw new Error(`Unknown role ${role}`);
+        await acMgr.connect(admin).grantRole(roleId, user, 0);
+      }
+
+      async function grantForwardToStrategy(vault, strategyIndex, method, user) {
+        await acMgr.connect(admin).grantRole(roles.FORWARD_TO_STRATEGY_ROLE, user, 0);
+        const specificSelector = await vault.getForwardToStrategySelector(strategyIndex, method);
+        await acMgr.connect(admin).setTargetFunctionRole(vault, [specificSelector], specificSelector);
+        await acMgr.connect(admin).grantRole(specificSelector, user, 0);
+      }
+
+      return {
+        deployVault,
+        grantRole,
+        grantForwardToStrategy,
+        acMgr,
+        OutflowLimitedAMMSV,
+        ...ret,
+      };
+    },
+  },
 ];
 
 async function invariantChecks(vault) {
@@ -260,8 +366,11 @@ variants.forEach((variant) => {
     });
 
     variant.tagit("Checks vault constructs with disabled initializer [!MultiStrategyERC4626]", async () => {
-      const { AccessManagedMSV, currency, strategies } = await helpers.loadFixture(variant.fixture);
-      const newVault = await AccessManagedMSV.deploy();
+      const { AccessManagedMSV, OutflowLimitedAMMSV, currency, strategies } = await helpers.loadFixture(
+        variant.fixture
+      );
+      const factory = (AccessManagedMSV || OutflowLimitedAMMSV);
+      const newVault = await factory.deploy();
       await expect(newVault.deploymentTransaction()).to.emit(newVault, "Initialized");
       await expect(
         newVault.initialize(
@@ -273,7 +382,7 @@ variants.forEach((variant) => {
           [0],
           [0]
         )
-      ).to.be.revertedWithCustomError(AccessManagedMSV, "InvalidInitialization");
+      ).to.be.revertedWithCustomError(factory, "InvalidInitialization");
     });
 
     variant.tagit("Initializes the vault correctly", async () => {
