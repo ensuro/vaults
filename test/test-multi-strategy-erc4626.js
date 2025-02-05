@@ -369,7 +369,7 @@ variants.forEach((variant) => {
       const { AccessManagedMSV, OutflowLimitedAMMSV, currency, strategies } = await helpers.loadFixture(
         variant.fixture
       );
-      const factory = (AccessManagedMSV || OutflowLimitedAMMSV);
+      const factory = AccessManagedMSV || OutflowLimitedAMMSV;
       const newVault = await factory.deploy();
       await expect(newVault.deploymentTransaction()).to.emit(newVault, "Initialized");
       await expect(

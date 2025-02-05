@@ -337,29 +337,28 @@ variants.forEach((variant) => {
       await currency.connect(lp).approve(vault, MaxUint256);
       await grantRole(vault, "LP_ROLE", lp);
 
-      await expect(vault.connect(lp).deposit(_A(5000), lp)).not.to.be.reverted;
+      await expect(vault.connect(lp).deposit(_A(4000), lp)).not.to.be.reverted;
+
+      await helpers.time.increase(WEEK);
+      await expect(vault.connect(lp).deposit(_A(2000), lp)).not.to.be.reverted;
       await expect(vault.connect(lp).withdraw(_A(800), lp, lp)).not.to.be.reverted;
       await expect(vault.connect(lp).withdraw(_A(300), lp, lp)).not.to.be.reverted;
-      // no debería fallar primero acá con falta de fondos?
-      // porque tenemos el limite + el deposito que nos deja un delta superior a lo depositado para retirar
-      // entonces no podríamos llegar al limite a menos que pasen algunos días.
-      // Limit happens before the underlying vault limits, so in this case fails with LimitReached even when
-      // it will fail anyway because lack of funds
-      await expect(vault.connect(lp).withdraw(_A(5600), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
+      // So far: +900 Flow / +4900 total
+      await expect(vault.connect(lp).withdraw(_A(2000), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
 
       await currency.connect(lp2).approve(vault, MaxUint256);
       await grantRole(vault, "LP_ROLE", lp2);
 
       await expect(vault.connect(lp2).deposit(_A(2000), lp2)).not.to.be.reverted;
       await expect(vault.connect(lp2).withdraw(_A(400), lp2, lp2)).not.to.be.reverted;
-
-      await expect(vault.connect(lp2).withdraw(_A(6700), lp2, lp2)).to.be.revertedWithCustomError(lom, "LimitReached");
+      // So far: +2500 Flow / +6500
+      await expect(vault.connect(lp).withdraw(_A(3501), lp, lp)).to.be.revertedWithCustomError(lom, "LimitReached");
 
       await helpers.time.increase(WEEK);
 
       // Balance Of and other methods work as always
       expect(await vault.balanceOf(lp2)).to.equal(_A(1600));
-      expect(await vault.convertToAssets(vault.balanceOf(lp))).to.equal(_A(3900));
+      expect(await vault.convertToAssets(vault.balanceOf(lp))).to.equal(_A(4900));
 
       await expect(vault.connect(lp).withdraw(_A(320), lp, lp)).not.to.be.reverted;
 

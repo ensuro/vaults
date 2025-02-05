@@ -63,8 +63,9 @@ contract OutflowLimitedAMMSV is AccessManagedMSV {
    * @param limit    The max amount of outflows that will be allowed in a given time slot.
    */
   function setupOutflowLimit(uint256 slotSize, uint256 limit) external {
-    _getLOMStorage().limit = limit.toUint128();
-    _getLOMStorage().slotSize = slotSize.toUint128();
+    LOMStorage storage $ = _getLOMStorage();
+    $.limit = limit.toUint128();
+    $.slotSize = slotSize.toUint128();
     emit LimitChanged(slotSize, limit);
   }
 
@@ -80,7 +81,6 @@ contract OutflowLimitedAMMSV is AccessManagedMSV {
     return _getLOMStorage().assetsDelta[slot];
   }
 
-  // solhint-disable-next-line func-name-mixedcase
   function makeOutflowSlot(uint256 slotSize, uint40 timestamp) external pure returns (SlotIndex) {
     return SlotIndex.wrap((slotSize << 128) + timestamp / slotSize);
   }
@@ -120,16 +120,14 @@ contract OutflowLimitedAMMSV is AccessManagedMSV {
 
     // Check delta doesn't exceed the threshold
     SlotIndex prevSlot = SlotIndex.wrap(SlotIndex.unwrap(slot) - 1);
-    int256 deltaLastTwoSlots = -int256(assets) +
-      _getLOMStorage().assetsDelta[slot] +
-      _getLOMStorage().assetsDelta[prevSlot];
+    LOMStorage storage $ = _getLOMStorage();
+    int256 deltaLastTwoSlots = -int256(assets) + $.assetsDelta[slot] + $.assetsDelta[prevSlot];
     // To check the limit, uses TWO slots, the current one and the previous one. This is to avoid someone doing
     // several operations in the slot limit, like withdrawal at 11:59PM and another withdrawal at 12:01 AM.
-    if (deltaLastTwoSlots < 0 && uint256(-deltaLastTwoSlots) > _getLOMStorage().limit)
-      revert LimitReached(deltaLastTwoSlots, _getLOMStorage().limit);
+    if (deltaLastTwoSlots < 0 && uint256(-deltaLastTwoSlots) > $.limit) revert LimitReached(deltaLastTwoSlots, $.limit);
 
     // Update the delta and pass the message to parent contract
-    _getLOMStorage().assetsDelta[slot] -= assets.toInt256();
+    $.assetsDelta[slot] -= assets.toInt256();
     super._withdraw(caller, receiver, owner, assets, shares);
   }
 
