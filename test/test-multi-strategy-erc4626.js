@@ -1,9 +1,10 @@
 const { expect } = require("chai");
 const { _A, getRole } = require("@ensuro/utils/js/utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
-const { encodeDummyStorage, dummyStorage, tagit, makeAllViewsPublic, mergeFragments, setupAMRole } = require("./utils");
+const { encodeDummyStorage, dummyStorage, tagit, makeAllViewsPublic, setupAMRole } = require("./utils");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
+const { deploy: ozUpgradesDeploy } = require("@openzeppelin/hardhat-upgrades/dist/utils");
 
 const { ethers } = hre;
 const { ZeroAddress, MaxUint256 } = hre.ethers;
@@ -105,7 +106,7 @@ const variants = [
     },
   },
   {
-    name: "AMProxy+LOM-AccessManagedMSV",
+    name: "AMProxy+AccessManagedMSV",
     tagit: tagit,
     accessManaged: true,
     accessError: "revertedWithAMError",
@@ -113,16 +114,9 @@ const variants = [
       const ret = await setUp();
       const { strategies, admin, currency } = ret;
       const AccessManagedMSV = await ethers.getContractFactory("AccessManagedMSV");
-      const LimitOutflowModifier = await ethers.getContractFactory("LimitOutflowModifier");
       const AccessManagedProxy = await ethers.getContractFactory("AccessManagedProxy");
       const AccessManager = await ethers.getContractFactory("AccessManager");
       const acMgr = await AccessManager.deploy(admin);
-      const msv = await AccessManagedMSV.deploy();
-      const lom = await LimitOutflowModifier.deploy(msv);
-      const combinedABI = mergeFragments(
-        AccessManagedMSV.interface.fragments,
-        mergeFragments(LimitOutflowModifier.interface.fragments, AccessManagedProxy.interface.fragments)
-      );
       const roles = {
         LP_ROLE: 1,
         LOM_ADMIN: 2,
@@ -147,19 +141,24 @@ const variants = [
         if (withdrawQueue === undefined) {
           withdrawQueue = strategies_.map((_, i) => i);
         }
-        const initializeData = msv.interface.encodeFunctionData("initialize", [
-          NAME,
-          SYMB,
-          await ethers.resolveAddress(currency),
-          await Promise.all(strategies_.map(ethers.resolveAddress)),
-          initStrategyDatas,
-          depositQueue,
-          withdrawQueue,
-        ]);
-        const proxy = await AccessManagedProxy.deploy(lom, initializeData, acMgr);
-        const deploymentTransaction = proxy.deploymentTransaction();
-        const vault = await ethers.getContractAt(combinedABI, await ethers.resolveAddress(proxy));
-        vault.deploymentTransaction = () => deploymentTransaction;
+        const vault = await hre.upgrades.deployProxy(
+          AccessManagedMSV,
+          [
+            NAME,
+            SYMB,
+            await ethers.resolveAddress(currency),
+            await Promise.all(strategies_.map(ethers.resolveAddress)),
+            initStrategyDatas,
+            depositQueue,
+            withdrawQueue,
+          ],
+          {
+            kind: "uups",
+            unsafeAllow: ["delegatecall"],
+            proxyFactory: AccessManagedProxy,
+            deployFunction: async (hre, opts, factory, ...args) => ozUpgradesDeploy(hre, opts, factory, ...args, acMgr),
+          }
+        );
         await makeAllViewsPublic(acMgr.connect(admin), vault);
 
         await setupAMRole(acMgr.connect(admin), vault, roles, "LP_ROLE", [
@@ -183,8 +182,6 @@ const variants = [
         await setupAMRole(acMgr.connect(admin), vault, roles, "REBALANCER_ROLE", ["rebalance"]);
 
         await setupAMRole(acMgr.connect(admin), vault, roles, "FORWARD_TO_STRATEGY_ROLE", ["forwardToStrategy"]);
-
-        await vault.connect(admin).LOM__setLimit(3600 * 24, _A(1));
 
         return vault;
       }
@@ -224,11 +221,6 @@ const variants = [
       const AccessManagedProxy = await ethers.getContractFactory("AccessManagedProxy");
       const AccessManager = await ethers.getContractFactory("AccessManager");
       const acMgr = await AccessManager.deploy(admin);
-      const msv = await OutflowLimitedAMMSV.deploy();
-      const combinedABI = mergeFragments(
-        OutflowLimitedAMMSV.interface.fragments,
-        AccessManagedProxy.interface.fragments
-      );
       const roles = {
         LP_ROLE: 1,
         LOM_ADMIN: 2,
@@ -253,19 +245,24 @@ const variants = [
         if (withdrawQueue === undefined) {
           withdrawQueue = strategies_.map((_, i) => i);
         }
-        const initializeData = msv.interface.encodeFunctionData("initialize", [
-          NAME,
-          SYMB,
-          await ethers.resolveAddress(currency),
-          await Promise.all(strategies_.map(ethers.resolveAddress)),
-          initStrategyDatas,
-          depositQueue,
-          withdrawQueue,
-        ]);
-        const proxy = await AccessManagedProxy.deploy(msv, initializeData, acMgr);
-        const deploymentTransaction = proxy.deploymentTransaction();
-        const vault = await ethers.getContractAt(combinedABI, await ethers.resolveAddress(proxy));
-        vault.deploymentTransaction = () => deploymentTransaction;
+        const vault = await hre.upgrades.deployProxy(
+          OutflowLimitedAMMSV,
+          [
+            NAME,
+            SYMB,
+            await ethers.resolveAddress(currency),
+            await Promise.all(strategies_.map(ethers.resolveAddress)),
+            initStrategyDatas,
+            depositQueue,
+            withdrawQueue,
+          ],
+          {
+            kind: "uups",
+            unsafeAllow: ["delegatecall"],
+            proxyFactory: AccessManagedProxy,
+            deployFunction: async (hre, opts, factory, ...args) => ozUpgradesDeploy(hre, opts, factory, ...args, acMgr),
+          }
+        );
         await makeAllViewsPublic(acMgr.connect(admin), vault);
 
         await setupAMRole(acMgr.connect(admin), vault, roles, "LP_ROLE", [
