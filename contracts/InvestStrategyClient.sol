@@ -69,7 +69,11 @@ library InvestStrategyClient {
     return
       address(strategy).functionDelegateCall(abi.encodeCall(IInvestStrategy.forwardEntryPoint, (method, extraData)));
   }
-
+  /**
+   * @dev Checks if the asset given is the correct one for the strategy detailed.
+   * @param strategy Strategy to be checked.
+   * @param asset Assets of the strategy to be checked.
+   */
   function checkAsset(IInvestStrategy strategy, address asset) internal view {
     if (strategy.asset(address(this)) != asset) revert InvalidStrategyAsset();
   }
@@ -104,14 +108,26 @@ library InvestStrategyClient {
     return keccak256(abi.encode("co.ensuro.InvestStrategyClient", strategy));
   }
 
+  /**
+   * @dev Returns the current assets in the strategy given.
+   * @param strategy Strategy to be checked.
+   */
   function totalAssets(IInvestStrategy strategy) internal view returns (uint256) {
     return strategy.totalAssets(address(this));
   }
 
+  /**
+   * @dev Returns the maximum amount of assets that can be deposited in the strategy.
+   * @param strategy Strategy to be checked.
+   */
   function maxDeposit(IInvestStrategy strategy) internal view returns (uint256) {
     return strategy.maxDeposit(address(this));
   }
 
+  /**
+   * @dev Returns the maximum amount of assets that can be withdrawn from the strategy.
+   * @param strategy Strategy to be checked.
+   */
   function maxWithdraw(IInvestStrategy strategy) internal view returns (uint256) {
     return strategy.maxWithdraw(address(this));
   }

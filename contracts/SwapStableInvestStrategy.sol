@@ -62,22 +62,27 @@ contract SwapStableInvestStrategy is IInvestStrategy {
     return 10 ** (18 - token.decimals());
   }
 
+  /// @inheritdoc IInvestStrategy
   function connect(bytes memory initData) external virtual override onlyDelegCall {
     _setSwapConfig(SwapLibrary.SwapConfig(SwapLibrary.SwapProtocol.undefined, 0, bytes("")), initData);
   }
 
+  /// @inheritdoc IInvestStrategy
   function disconnect(bool force) external virtual override onlyDelegCall {
     if (!force && _investAsset.balanceOf(address(this)) != 0) revert CannotDisconnectWithAssets();
   }
 
+  /// @inheritdoc IInvestStrategy
   function maxWithdraw(address contract_) public view virtual override returns (uint256) {
     return totalAssets(contract_); // TODO: check how much can be swapped without breaking the slippage
   }
 
+  /// @inheritdoc IInvestStrategy
   function maxDeposit(address /*contract_*/) public view virtual override returns (uint256) {
     return type(uint256).max; // TODO: check how much can be swapped without breaking the slippage
   }
 
+  /// @inheritdoc IInvestStrategy
   function asset(address) public view virtual override returns (address) {
     return address(_asset);
   }
@@ -95,6 +100,7 @@ contract SwapStableInvestStrategy is IInvestStrategy {
       ) / _toWadFactor(_asset);
   }
 
+  /// @inheritdoc IInvestStrategy
   function totalAssets(address contract_) public view virtual override returns (uint256 assets) {
     return _convertAssets(_investAsset.balanceOf(contract_), contract_);
   }

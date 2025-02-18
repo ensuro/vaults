@@ -55,36 +55,44 @@ contract CompoundV3InvestStrategy is IInvestStrategy {
     _baseToken = cToken_.baseToken();
   }
 
+  /// @inheritdoc IInvestStrategy
   function connect(bytes memory initData) external virtual override onlyDelegCall {
     _setSwapConfig(SwapLibrary.SwapConfig(SwapLibrary.SwapProtocol.undefined, 0, bytes("")), initData);
   }
 
+  /// @inheritdoc IInvestStrategy
   function disconnect(bool force) external virtual override onlyDelegCall {
     if (!force && _cToken.balanceOf(address(this)) != 0) revert CannotDisconnectWithAssets();
   }
 
+  /// @inheritdoc IInvestStrategy
   function maxWithdraw(address contract_) public view virtual override returns (uint256) {
     if (_cToken.isWithdrawPaused()) return 0;
     return _cToken.balanceOf(contract_);
   }
 
+  /// @inheritdoc IInvestStrategy
   function maxDeposit(address /*contract_*/) public view virtual override returns (uint256) {
     if (_cToken.isSupplyPaused()) return 0;
     return type(uint256).max;
   }
 
+  /// @inheritdoc IInvestStrategy
   function asset(address) public view virtual override returns (address) {
     return _baseToken;
   }
 
+  /// @inheritdoc IInvestStrategy
   function totalAssets(address contract_) public view virtual override returns (uint256 assets) {
     return _cToken.balanceOf(contract_);
   }
 
+  /// @inheritdoc IInvestStrategy
   function withdraw(uint256 assets) external virtual override onlyDelegCall {
     _cToken.withdraw(_baseToken, assets);
   }
 
+  /// @inheritdoc IInvestStrategy
   function deposit(uint256 assets) external virtual override onlyDelegCall {
     _supply(assets);
   }
@@ -118,6 +126,7 @@ contract CompoundV3InvestStrategy is IInvestStrategy {
     StorageSlot.getBytesSlot(storageSlot).value = newSwapConfigAsBytes;
   }
 
+  /// @inheritdoc IInvestStrategy
   function forwardEntryPoint(uint8 method, bytes memory params) external onlyDelegCall returns (bytes memory) {
     ForwardMethods checkedMethod = ForwardMethods(method);
     if (checkedMethod == ForwardMethods.harvestRewards) {

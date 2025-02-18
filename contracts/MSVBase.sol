@@ -94,6 +94,9 @@ abstract contract MSVBase is IExposeStorage {
     return ret;
   }
 
+  /**
+   * @dev For each strategy in the deposit queue, calculates the max deposit and sum it up to finally return the total assets could be deposited.
+   */
   function _maxDepositable() internal view returns (uint256 ret) {
     for (uint256 i; address(_strategies[i]) != address(0) && i < MAX_STRATEGIES; i++) {
       uint256 maxDep = _strategies[i].maxDeposit();
@@ -103,12 +106,20 @@ abstract contract MSVBase is IExposeStorage {
     return ret;
   }
 
+  /**
+   * @dev Sum up the total assets of each strategy in the vault and returns the total value.
+   */
   function _totalAssets() internal view returns (uint256 assets) {
     for (uint256 i; address(_strategies[i]) != address(0) && i < MAX_STRATEGIES; i++) {
       assets += _strategies[i].totalAssets();
     }
   }
 
+  /**
+   * @dev Withdraw assets from the strategies in the withdraw queue order until zero assets remains to be withdrawn.
+   *      After finishing the withdraw, left must be zero, otherwise reverts, and should never happen.
+   * @param assets The amount of assets to be withdrawn from the strategies.
+   */
   function _withdrawFromStrategies(uint256 assets) internal {
     uint256 left = assets;
     for (uint256 i; left != 0 && _withdrawQueue[i] != 0 && i < MAX_STRATEGIES; i++) {
@@ -121,6 +132,11 @@ abstract contract MSVBase is IExposeStorage {
     if (left != 0) revert WithdrawError(); // This shouldn't happen, since assets must be <= maxWithdraw(owner)
   }
 
+  /**
+   * @dev Deposit assets to the strategies in the deposit queue order until zero assets remains to be deposited.
+   *     After finishing the deposit, left must be zero, otherwise reverts, and should never happen.
+   * @param assets The amount of assets to be deposited to the strategies.
+   */
   function _depositToStrategies(uint256 assets) internal {
     // Transfers the assets from the caller and supplies to compound
     uint256 left = assets;
@@ -281,7 +297,10 @@ abstract contract MSVBase is IExposeStorage {
     strategy.dcDisconnect(force);
     emit StrategyRemoved(strategy, strategyIndex);
   }
-
+  /**
+   * @dev Updated the deposit queue with a new one.
+   *      It verifies the length of the new queue and that there are no address(0) strategies.
+   */
   function changeDepositQueue(uint8[] memory newDepositQueue_) public virtual {
     bool[MAX_STRATEGIES] memory seen;
     uint256 i = 0;
@@ -297,6 +316,10 @@ abstract contract MSVBase is IExposeStorage {
     emit DepositQueueChanged(newDepositQueue_);
   }
 
+  /**
+   * @dev Updated the withdraw queue with a new one.
+   *      It verifies the length of the new queue and that there are no address(0) strategies.
+   */
   function changeWithdrawQueue(uint8[] memory newWithdrawQueue_) public virtual {
     bool[MAX_STRATEGIES] memory seen;
     uint8 i = 0;
@@ -333,6 +356,9 @@ abstract contract MSVBase is IExposeStorage {
     return amount;
   }
 
+  /**
+   * @dev Returns the list of strategies in the vault in order.
+   */
   function strategies() external view returns (IInvestStrategy[MAX_STRATEGIES] memory) {
     return _strategies;
   }
