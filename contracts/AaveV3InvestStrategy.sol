@@ -44,21 +44,38 @@ contract AaveV3InvestStrategy is IInvestStrategy {
     return _aave.getReserveData(address(_asset));
   }
 
+  /// @inheritdoc IInvestStrategy
+  /**
+   * @dev Stablish connection with the strategy using the swap configuration data.
+   *      This function can only be called through delegatecall.
+   *
+   * @param initData Initialization swap config data
+   */
   function connect(bytes memory initData) external virtual override onlyDelegCall {
     if (initData.length != 0) revert NoExtraDataAllowed();
   }
 
+  /// @inheritdoc IInvestStrategy
+  /**
+   * @dev Disconnects the strategy, it ensures there are no remaining assets before disconnecting, else it reverts with CannotDisconnectWithAssets().
+   *      The force param is used to disconnect even if there are remaining assets.
+   *      This function can only be called through delegatecall.
+   *
+   * @param force Boolean value to force disconnection even if there are remaining assets.
+   */
   function disconnect(bool force) external virtual override onlyDelegCall {
     IERC20 aToken = IERC20(_reserveData().aTokenAddress);
     if (!force && aToken.balanceOf(address(this)) != 0) revert CannotDisconnectWithAssets();
   }
 
+  /// @inheritdoc IInvestStrategy
   function maxWithdraw(address contract_) public view virtual override returns (uint256) {
     DataTypes.ReserveData memory reserve = _reserveData();
     if (!reserve.configuration.getActive() || reserve.configuration.getPaused()) return 0;
     return IERC20(reserve.aTokenAddress).balanceOf(contract_);
   }
 
+  /// @inheritdoc IInvestStrategy
   function maxDeposit(address /*contract_*/) public view virtual override returns (uint256) {
     DataTypes.ReserveData memory reserve = _reserveData();
     if (!reserve.configuration.getActive() || reserve.configuration.getPaused() || reserve.configuration.getFrozen())
@@ -67,18 +84,32 @@ contract AaveV3InvestStrategy is IInvestStrategy {
     return type(uint256).max;
   }
 
+  /// @inheritdoc IInvestStrategy
   function asset(address) public view virtual override returns (address) {
     return address(_asset);
   }
 
+  /// @inheritdoc IInvestStrategy
   function totalAssets(address contract_) public view virtual override returns (uint256 assets) {
     return IERC20(_reserveData().aTokenAddress).balanceOf(contract_);
   }
 
+  /// @inheritdoc IInvestStrategy
+  /**
+   * @dev Withdraws the amount of assets given from the strategy. This function can only be called through delegatecall.
+   *
+   * @param assets Amount of assets to be withdrawn.
+   */
   function withdraw(uint256 assets) external virtual override onlyDelegCall {
     if (assets != 0) _aave.withdraw(address(_asset), assets, address(this));
   }
 
+  /// @inheritdoc IInvestStrategy
+  /**
+   * @dev Deposits the amount of assets given into the strategy. This function can only be called through delegatecall.
+   *
+   * @param assets Amount of assets to be deposited.
+   */
   function deposit(uint256 assets) external virtual override onlyDelegCall {
     if (assets != 0) _supply(assets);
   }
@@ -88,6 +119,7 @@ contract AaveV3InvestStrategy is IInvestStrategy {
     _aave.supply(address(_asset), assets, address(this), 0);
   }
 
+  /// @inheritdoc IInvestStrategy
   function forwardEntryPoint(uint8, bytes memory) external view onlyDelegCall returns (bytes memory) {
     // solhint-disable-next-line gas-custom-errors,reason-string
     revert();

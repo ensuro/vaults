@@ -300,6 +300,10 @@ abstract contract MSVBase is IExposeStorage {
   /**
    * @dev Updated the deposit queue with a new one.
    *      It verifies the length of the new queue and that there are no address(0) strategies.
+   *
+   * @notice Emits DepositQueueChanged(uint8[]) when updating the deposit queue.
+   *
+   * @param newDepositQueue_ New deposit queue array, array length must be less or equal to MAX_STRATEGIES and None of strategy should be address(0)
    */
   function changeDepositQueue(uint8[] memory newDepositQueue_) public virtual {
     bool[MAX_STRATEGIES] memory seen;
@@ -357,7 +361,7 @@ abstract contract MSVBase is IExposeStorage {
   }
 
   /**
-   * @dev Returns the list of strategies in the vault in order.
+   * @dev Returns the list of strategies in the vault in order. The array is filled with zero addresses after the first one that is address(0).
    */
   function strategies() external view returns (IInvestStrategy[MAX_STRATEGIES] memory) {
     return _strategies;

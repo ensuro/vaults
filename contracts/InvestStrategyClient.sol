@@ -21,10 +21,24 @@ library InvestStrategyClient {
 
   error InvalidStrategyAsset();
 
+  /**
+   * @dev Performs a connection with the given strategy. The connection is done using a delegatecall to the strategy.
+   *      connect(bytes) is encoded to execute functionDelegateCall.
+   *
+   * @param strategy Investment strategy to connect.
+   * @param initStrategyData Initialization data required for the strategy to connect.
+   */
   function dcConnect(IInvestStrategy strategy, bytes memory initStrategyData) internal {
     address(strategy).functionDelegateCall(abi.encodeCall(IInvestStrategy.connect, initStrategyData));
   }
 
+  /**
+   * @dev Disconnects from the given strategy. This diconnection is done using a delegatecall to the strategy.
+   *      disconnect(bytes) is encoded to execute functionDelegateCall.
+   *
+   * @param strategy Investment strategy to connect.
+   * @param force Bool value to force disconnection, in case True it will emit DisconnectFailed if it fails, otherwise it will revert when it's false and fails.
+   */
   function dcDisconnect(IInvestStrategy strategy, bool force) internal {
     if (force) {
       // solhint-disable-next-line avoid-low-level-calls
@@ -37,6 +51,13 @@ library InvestStrategyClient {
     }
   }
 
+  /**
+   * @dev Delegate call to withdraw assets from a given strategy. @return True if the call was successful. In case param ignoreError is True, if it fails event WithdrawFailed will be emitted.
+   *      withdraw(uint256 assets) is encoded to execute functionDelegateCall.
+   * @param strategy Strategy to withdraw assets from.
+   * @param assets Amount of assets to be withdrawn.
+   * @param ignoreError Boolean value to ignore errors, in case True, the error will be caught and event WithdrawFailed will be emitted, otherwise it will revert when it's false and fails.
+   */
   function dcWithdraw(IInvestStrategy strategy, uint256 assets, bool ignoreError) internal returns (bool) {
     if (ignoreError) {
       // solhint-disable-next-line avoid-low-level-calls
@@ -51,6 +72,13 @@ library InvestStrategyClient {
     }
   }
 
+  /**
+   * @dev Delegate call to deposit assets from a given strategy. @return True if the call was successful. In case param ignoreError is True, if it fails event DepositFailed will be emitted.
+   *      deposit(uint256 assets) is encoded to execute functionDelegateCall.
+   * @param strategy Strategy to deposit assets from.
+   * @param assets Amount of assets to be deposited.
+   * @param ignoreError Boolean value to ignore errors, in case True, the error will be caught and event DepositFailed will be emitted, otherwise it will revert when it's false and fails.
+   */
   function dcDeposit(IInvestStrategy strategy, uint256 assets, bool ignoreError) internal returns (bool) {
     if (ignoreError) {
       // solhint-disable-next-line avoid-low-level-calls
@@ -65,14 +93,22 @@ library InvestStrategyClient {
     }
   }
 
+  /**
+   * @dev Delegate call to forward a custom method of the given strategy. @return The result of the call.
+   *     forwardEntryPoint(uint8 method, bytes memory params) is encoded to execute functionDelegateCall.
+   *
+   * @param strategy Strategy to forward the custom method.
+   * @param method Method to be forwarded.
+   * @param extraData Additional params required by the method
+   */
   function dcForward(IInvestStrategy strategy, uint8 method, bytes memory extraData) internal returns (bytes memory) {
     return
       address(strategy).functionDelegateCall(abi.encodeCall(IInvestStrategy.forwardEntryPoint, (method, extraData)));
   }
   /**
-   * @dev Checks if the asset given is the correct one for the strategy detailed.
+   * @dev Checks the strategy asset() to ensure it is the same as the asset of the vault.
    * @param strategy Strategy to be checked.
-   * @param asset Assets of the strategy to be checked.
+   * @param asset Asset of the vault.
    */
   function checkAsset(IInvestStrategy strategy, address asset) internal view {
     if (strategy.asset(address(this)) != asset) revert InvalidStrategyAsset();
@@ -109,8 +145,9 @@ library InvestStrategyClient {
   }
 
   /**
-   * @dev Returns the current assets in the strategy given.
-   * @param strategy Strategy to be checked.
+   * @dev Returns the total assets in the strategy given.
+   *
+   * See {IInvestStrategy.totalAssets()}
    */
   function totalAssets(IInvestStrategy strategy) internal view returns (uint256) {
     return strategy.totalAssets(address(this));

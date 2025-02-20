@@ -63,11 +63,24 @@ contract SwapStableInvestStrategy is IInvestStrategy {
   }
 
   /// @inheritdoc IInvestStrategy
+  /**
+   * @dev Stablish connection with the strategy using the swap configuration data.
+   *      This function can only be called through delegatecall.
+   *
+   * @param initData Initialization swap config data
+   */
   function connect(bytes memory initData) external virtual override onlyDelegCall {
     _setSwapConfig(SwapLibrary.SwapConfig(SwapLibrary.SwapProtocol.undefined, 0, bytes("")), initData);
   }
 
   /// @inheritdoc IInvestStrategy
+  /**
+   * @dev Disconnects the strategy, it ensures there are no remaining assets before disconnecting, else it reverts with CannotDisconnectWithAssets().
+   *      The force param is used to disconnect even if there are remaining assets.
+   *      This function can only be called through delegatecall.
+   *
+   * @param force Boolean value to force disconnection even if there are remaining assets.
+   */
   function disconnect(bool force) external virtual override onlyDelegCall {
     if (!force && _investAsset.balanceOf(address(this)) != 0) revert CannotDisconnectWithAssets();
   }
@@ -87,6 +100,9 @@ contract SwapStableInvestStrategy is IInvestStrategy {
     return address(_asset);
   }
 
+  /**
+   * @dev Returns the address of the asset invested in the strategy.
+   */
   function investAsset(address) public view returns (address) {
     return address(_investAsset);
   }
@@ -105,6 +121,12 @@ contract SwapStableInvestStrategy is IInvestStrategy {
     return _convertAssets(_investAsset.balanceOf(contract_), contract_);
   }
 
+  /// @inheritdoc IInvestStrategy
+  /**
+   * @dev Withdraws the amount of assets given from the strategy swapping _investAsset to _asset, to do this swap it calculates the price for conversion.
+   *      This function can only be called through delegatecall.
+   * @param assets Amount of assets to be withdrawn.
+   */
   function withdraw(uint256 assets) public virtual override onlyDelegCall {
     if (assets == 0) return;
     SwapLibrary.SwapConfig memory swapConfig = abi.decode(
@@ -122,6 +144,12 @@ contract SwapStableInvestStrategy is IInvestStrategy {
     }
   }
 
+  /// @inheritdoc IInvestStrategy
+  /**
+   * @dev Deposit the amount of assets given into the strategy swapping _asset to _investAsset, this swap is done using the exchange rate given by _price.
+   *
+   * @param assets Amount of assets to be deposited.
+   */
   function deposit(uint256 assets) public virtual override onlyDelegCall {
     if (assets == 0) return;
     SwapLibrary.SwapConfig memory swapConfig = abi.decode(
@@ -140,6 +168,14 @@ contract SwapStableInvestStrategy is IInvestStrategy {
     StorageSlot.getBytesSlot(storageSlot).value = newSwapConfigAsBytes;
   }
 
+  /// @inheritdoc IInvestStrategy
+  /**
+   * @dev Receives an external call to execute a custom method of action in the strategy. This method can only be called through delegatecall.
+   *      We use a revert in case the method is not one of the enum values, this should never happen.
+   *
+   * @param method Enum value of the method to forward.
+   * @param params Params required for the method.
+   */
   function forwardEntryPoint(uint8 method, bytes memory params) external onlyDelegCall returns (bytes memory) {
     ForwardMethods checkedMethod = ForwardMethods(method);
     if (checkedMethod == ForwardMethods.setSwapConfig) {
@@ -158,6 +194,11 @@ contract SwapStableInvestStrategy is IInvestStrategy {
     return abi.decode(swapConfigAsBytes, (SwapLibrary.SwapConfig));
   }
 
+  /**
+   * @dev Returns the swap configuration of the given contract. It uses the internal function _getSwapConfig that returns the decoded swap configuration structure.
+   *
+   * @param contract_ Address of the contract configuration being requested.
+   */
   function getSwapConfig(address contract_) public view returns (SwapLibrary.SwapConfig memory) {
     return _getSwapConfig(contract_);
   }

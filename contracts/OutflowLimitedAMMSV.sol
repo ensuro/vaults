@@ -70,30 +70,30 @@ contract OutflowLimitedAMMSV is AccessManagedMSV {
   }
 
   /**
-   * @dev Returns the current time slot size in seconds.
+   * @dev @return The current time slot size in seconds.
    */
   function getOutflowLimitSlotSize() external view returns (uint256) {
     return _getLOMStorage().slotSize;
   }
 
   /**
-   * @dev Returns the current withdraw limit for each slot.
+   * @dev @return The net outflow limit that will be applied on two consecutive time slots
    */
   function getOutflowLimit() external view returns (uint256) {
     return _getLOMStorage().limit;
   }
 
   /**
-   * @dev Returns the current delta variation in assets for the given slot.
+   * @dev @return The current delta variation in assets for the given slot.
    *      Calculated as the sum of limit + deposits - withdrawals.
-   * @param slot The given slot to check the delta.
+   * @param slot The given slot to check the delta. Compatible with the slot calculated by makeOutflowSlot.
    */
   function getAssetsDelta(SlotIndex slot) external view returns (int256) {
     return _getLOMStorage().assetsDelta[slot];
   }
 
   /**
-   * @dev Returns a slot calculated by the slotSize and the timestamp. This slot is the one used for example in getAssetsDelta.
+   * @dev @return The resulting value is the combination of the slotSize (first 128 bits) and the index of the timestamp / slotSize
    * @param slotSize The size of the slot we want to calculate.
    * @param timestamp The slot timestamp tried to be calculated.
    */
