@@ -8,6 +8,15 @@ import {IInvestStrategy} from "./interfaces/IInvestStrategy.sol";
 import {InvestStrategyClient} from "./InvestStrategyClient.sol";
 import {IExposeStorage} from "./interfaces/IExposeStorage.sol";
 
+/**
+ * @title MSVBase
+ * @dev Base vault contract that manages multiple investment strategies.
+ *      Allows deposits/withdraws from each strategy, and also permit rebalances between them.
+ *      Complete managment of the strategies is allowed, including adding, removing, and changing the order of the queues.
+ *
+ * @custom:security-contact security@ensuro.co
+ * @author Ensuro
+ */
 abstract contract MSVBase is IExposeStorage {
   using InvestStrategyClient for IInvestStrategy;
 

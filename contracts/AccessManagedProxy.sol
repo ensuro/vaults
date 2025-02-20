@@ -4,6 +4,14 @@ pragma solidity ^0.8.0;
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {IAccessManager} from "@openzeppelin/contracts/access/manager/IAccessManager.sol";
 
+/**
+ * @title AccessManagedProxy
+ * @dev Proxy contract using IAccessManager to manage access control before delegating calls.
+ *      It extends ERC1967Proxy to ensure upgradeability.
+ *
+ * @custom:security-contact security@ensuro.co
+ * @author Ensuro
+ */
 contract AccessManagedProxy is ERC1967Proxy {
   IAccessManager public immutable ACCESS_MANAGER;
 

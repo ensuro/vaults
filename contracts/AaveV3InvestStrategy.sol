@@ -45,24 +45,11 @@ contract AaveV3InvestStrategy is IInvestStrategy {
   }
 
   /// @inheritdoc IInvestStrategy
-  /**
-   * @dev Stablish connection with the strategy using the swap configuration data.
-   *      This function can only be called through delegatecall.
-   *
-   * @param initData Initialization swap config data
-   */
   function connect(bytes memory initData) external virtual override onlyDelegCall {
     if (initData.length != 0) revert NoExtraDataAllowed();
   }
 
   /// @inheritdoc IInvestStrategy
-  /**
-   * @dev Disconnects the strategy, it ensures there are no remaining assets before disconnecting, else it reverts with CannotDisconnectWithAssets().
-   *      The force param is used to disconnect even if there are remaining assets.
-   *      This function can only be called through delegatecall.
-   *
-   * @param force Boolean value to force disconnection even if there are remaining assets.
-   */
   function disconnect(bool force) external virtual override onlyDelegCall {
     IERC20 aToken = IERC20(_reserveData().aTokenAddress);
     if (!force && aToken.balanceOf(address(this)) != 0) revert CannotDisconnectWithAssets();
@@ -95,21 +82,11 @@ contract AaveV3InvestStrategy is IInvestStrategy {
   }
 
   /// @inheritdoc IInvestStrategy
-  /**
-   * @dev Withdraws the amount of assets given from the strategy. This function can only be called through delegatecall.
-   *
-   * @param assets Amount of assets to be withdrawn.
-   */
   function withdraw(uint256 assets) external virtual override onlyDelegCall {
     if (assets != 0) _aave.withdraw(address(_asset), assets, address(this));
   }
 
   /// @inheritdoc IInvestStrategy
-  /**
-   * @dev Deposits the amount of assets given into the strategy. This function can only be called through delegatecall.
-   *
-   * @param assets Amount of assets to be deposited.
-   */
   function deposit(uint256 assets) external virtual override onlyDelegCall {
     if (assets != 0) _supply(assets);
   }
