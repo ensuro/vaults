@@ -78,7 +78,7 @@ contract SwapStableAaveV3InvestStrategy is SwapStableInvestStrategy {
   }
 
   function deposit(uint256 assets) public virtual override onlyDelegCall {
-    super.deposit(assets);  // Converts assets to investAssets
+    super.deposit(assets); // Converts assets to investAssets
     _supply(_investAsset.balanceOf(address(this)), false);
   }
 

@@ -191,7 +191,7 @@ abstract contract MSVBase is IExposeStorage {
   /**
    * @dev Checks the caller can execute this forwardToStrategy call, otherwise reverts.
    *
-  *       This method MUST be implemented by the inheriting contracts with the specific access control mechanism
+   *       This method MUST be implemented by the inheriting contracts with the specific access control mechanism
    *
    * @param strategyIndex The index of the strategy in the _strategies array
    * @param method Id of the method to call. Is recommended that the strategy defines an enum with the methods that
