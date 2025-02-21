@@ -7,7 +7,10 @@ import {IInvestStrategy} from "./interfaces/IInvestStrategy.sol";
 
 /**
  * @title InvestStrategyClient
- * @dev Library to simplify the interaction with IInvestStrategy objects
+ *
+ * @dev Library to simplify the interaction with IInvestStrategy objects. Abstract away the delegate calls and
+ *      other gotchas of the communication with the strategies.
+ *
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
@@ -21,10 +24,25 @@ library InvestStrategyClient {
 
   error InvalidStrategyAsset();
 
+  /**
+   * @dev Performs a connection with the given strategy. See {IInvestStrategy.connect}
+   *
+   * @param strategy Investment strategy to connect.
+   * @param initStrategyData Initialization data required for the strategy to connect.
+   */
   function dcConnect(IInvestStrategy strategy, bytes memory initStrategyData) internal {
     address(strategy).functionDelegateCall(abi.encodeCall(IInvestStrategy.connect, initStrategyData));
   }
 
+  /**
+   * @dev Disconnects from the given strategy. This diconnection is done using a delegatecall to the strategy.
+   *
+   *      See {IInvestStrategy.disconnect}
+   *
+   * @param strategy Investment strategy to connect.
+   * @param force Bool value to force disconnection, when `true` it will just emit DisconnectFailed if it fails,
+   *              otherwise it will revert when it's false and fails.
+   */
   function dcDisconnect(IInvestStrategy strategy, bool force) internal {
     if (force) {
       // solhint-disable-next-line avoid-low-level-calls
@@ -37,6 +55,17 @@ library InvestStrategyClient {
     }
   }
 
+  /**
+   * @dev Delegate call to withdraw assets from a given strategy.
+   *
+   *      See {IInvestStrategy.withdraw}
+   *
+   * @param strategy Strategy to withdraw assets from.
+   * @param assets Amount of assets to be withdrawn.
+   * @param ignoreError When true, the error will be caught and event WithdrawFailed will be emitted,
+                        otherwise it will revert when it's false and fails.
+   * @return Returns true if it was successful, otherwise returns false (only when ignoreError = true, otherwise reverts)
+   */
   function dcWithdraw(IInvestStrategy strategy, uint256 assets, bool ignoreError) internal returns (bool) {
     if (ignoreError) {
       // solhint-disable-next-line avoid-low-level-calls
@@ -51,6 +80,17 @@ library InvestStrategyClient {
     }
   }
 
+  /**
+   * @dev Delegate call to deposit assets from a given strategy.
+   *
+   *      See {IInvestStrategy.deposit}
+   *
+   * @param strategy Strategy to deposit assets from.
+   * @param assets Amount of assets to be deposited.
+   * @param ignoreError When true, the error will be caught and event DepositFailed will be emitted,
+                        otherwise it will revert when it's false and fails.
+   * @return Returns true if it was successful, otherwise returns false (only when ignoreError = true, otherwise reverts)
+   */
   function dcDeposit(IInvestStrategy strategy, uint256 assets, bool ignoreError) internal returns (bool) {
     if (ignoreError) {
       // solhint-disable-next-line avoid-low-level-calls
@@ -65,15 +105,40 @@ library InvestStrategyClient {
     }
   }
 
+  /**
+   * @dev Delegate call to forward a custom method of the given strategy.
+   *
+   *      See {IInvestStrategy.forwardEntryPoint}
+   *
+   * @param strategy Strategy to forward the custom method.
+   * @param method Method to be forwarded.
+   * @param extraData Additional params required by the method
+   * @return Returns the result of {IInvestStrategy.forwardEntryPoint}
+   */
   function dcForward(IInvestStrategy strategy, uint8 method, bytes memory extraData) internal returns (bytes memory) {
     return
       address(strategy).functionDelegateCall(abi.encodeCall(IInvestStrategy.forwardEntryPoint, (method, extraData)));
   }
 
+  /**
+   * @dev Checks the strategy asset() to ensure it is the same as the asset of the vault.
+   * @param strategy Strategy to be checked.
+   * @param asset Asset of the vault.
+   */
   function checkAsset(IInvestStrategy strategy, address asset) internal view {
     if (strategy.asset(address(this)) != asset) revert InvalidStrategyAsset();
   }
 
+  /**
+   * @dev Replaces one strategy with another.
+   *
+   * @param oldStrategy The strategy to be replaced
+   * @param newStrategy The new strategy to connect
+   * @param newStrategyInitData The initialization data that will be send to the `newStrategy` on connect
+   * @param asset Asset of the vault (the newStrategy has to have the same asset)
+   * @param force When false, it reverts if withdrawal of assets or disconnection or deposit into the new strategy
+   *              fails. When true, it doesn't revert on any of those errors, it just emits events.
+   */
   function strategyChange(
     IInvestStrategy oldStrategy,
     IInvestStrategy newStrategy,
@@ -95,7 +160,8 @@ library InvestStrategyClient {
 
   /**
    * @dev Returns the slot where the specific data of the strategy is stored.
-   *      Warning! This assumes the same strategy (deployed code in a given address) isn't used twice inside a given
+   *
+   *      WARNING: This assumes the same strategy (deployed code in a given address) isn't used twice inside a given
    *      contract. If that happens, the storage of one can collide with the other.
    *      Also, be aware if you unplug and the re-plug a given strategy into a contract, you might be reading a state
    *      that is not clean
@@ -104,14 +170,29 @@ library InvestStrategyClient {
     return keccak256(abi.encode("co.ensuro.InvestStrategyClient", strategy));
   }
 
+  /**
+   * @dev Returns the total assets in the strategy given.
+   *
+   * See {IInvestStrategy.totalAssets()}
+   */
   function totalAssets(IInvestStrategy strategy) internal view returns (uint256) {
     return strategy.totalAssets(address(this));
   }
 
+  /**
+   * @dev Returns the maximum amount of assets that can be deposited in the strategy.
+   *
+   *      See {IInvestStrategy.maxDeposit}
+   */
   function maxDeposit(IInvestStrategy strategy) internal view returns (uint256) {
     return strategy.maxDeposit(address(this));
   }
 
+  /**
+   * @dev Returns the maximum amount of assets that can be withdrawn from the strategy.
+   *
+   *      See {IInvestStrategy.maxWithdraw}
+   */
   function maxWithdraw(IInvestStrategy strategy) internal view returns (uint256) {
     return strategy.maxWithdraw(address(this));
   }

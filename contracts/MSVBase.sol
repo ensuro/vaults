@@ -8,6 +8,29 @@ import {IInvestStrategy} from "./interfaces/IInvestStrategy.sol";
 import {InvestStrategyClient} from "./InvestStrategyClient.sol";
 import {IExposeStorage} from "./interfaces/IExposeStorage.sol";
 
+/**
+ * @title MSVBase
+ * @dev Base vault contract that manages multiple investment strategies.
+ *      Allows deposits/withdraws from each strategy, and also permit rebalances between them.
+ *
+ *      Funds that enter the vault, will be deposited into the strategies following _depositQueue (only tries the
+ *      next strategy if the current one doesn't accept more deposits).
+ *
+ *      Funds that exit the vault, will be withdrawn into the strategies following _withdrawQueue (only tries the
+ *      next strategy if the current one doesn't accept more withdrawals).
+ *
+ *      It doesn't have any allocation strategy besides that. Rebalance is done externally by calling `rebalance`
+ *      method.
+ *
+ *      This is a base contract, intended to be inherited by implementations of the ERC4626 standard, that will
+ *      handle access control, deposits and other stuff.
+ *
+ *      WARNING: this contract uses storage gaps (https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps)
+ *      to manage upgradeability potential issues, NOT namespaced storage
+ *
+ * @custom:security-contact security@ensuro.co
+ * @author Ensuro
+ */
 abstract contract MSVBase is IExposeStorage {
   using InvestStrategyClient for IInvestStrategy;
 
@@ -94,6 +117,10 @@ abstract contract MSVBase is IExposeStorage {
     return ret;
   }
 
+  /**
+   * @dev For each strategy in the deposit queue, calculates the max deposit and sum it up to finally return the
+   *      total assets could be deposited.
+   */
   function _maxDepositable() internal view returns (uint256 ret) {
     for (uint256 i; address(_strategies[i]) != address(0) && i < MAX_STRATEGIES; i++) {
       uint256 maxDep = _strategies[i].maxDeposit();
@@ -103,12 +130,20 @@ abstract contract MSVBase is IExposeStorage {
     return ret;
   }
 
+  /**
+   * @dev Sum up the total assets of each strategy in the vault and returns the total value.
+   */
   function _totalAssets() internal view returns (uint256 assets) {
     for (uint256 i; address(_strategies[i]) != address(0) && i < MAX_STRATEGIES; i++) {
       assets += _strategies[i].totalAssets();
     }
   }
 
+  /**
+   * @dev Withdraw assets from the strategies in the withdraw queue order until zero assets remains to be withdrawn.
+   *      After finishing the withdraw, left must be zero, otherwise reverts, and should never happen.
+   * @param assets The amount of assets to be withdrawn from the strategies.
+   */
   function _withdrawFromStrategies(uint256 assets) internal {
     uint256 left = assets;
     for (uint256 i; left != 0 && _withdrawQueue[i] != 0 && i < MAX_STRATEGIES; i++) {
@@ -121,6 +156,11 @@ abstract contract MSVBase is IExposeStorage {
     if (left != 0) revert WithdrawError(); // This shouldn't happen, since assets must be <= maxWithdraw(owner)
   }
 
+  /**
+   * @dev Deposit assets to the strategies in the deposit queue order until zero assets remains to be deposited.
+   *      After finishing the deposit, left must be zero, otherwise reverts, and should never happen.
+   * @param assets The amount of assets to be deposited to the strategies.
+   */
   function _depositToStrategies(uint256 assets) internal {
     // Transfers the assets from the caller and supplies to compound
     uint256 left = assets;
@@ -149,7 +189,9 @@ abstract contract MSVBase is IExposeStorage {
   }
 
   /**
-   * @dev Checks the caller can execute this forwardToStrategy call, otherwise reverts
+   * @dev Checks the caller can execute this forwardToStrategy call, otherwise reverts.
+   *
+   *       This method MUST be implemented by the inheriting contracts with the specific access control mechanism
    *
    * @param strategyIndex The index of the strategy in the _strategies array
    * @param method Id of the method to call. Is recommended that the strategy defines an enum with the methods that
@@ -159,8 +201,9 @@ abstract contract MSVBase is IExposeStorage {
   function _checkForwardToStrategy(uint8 strategyIndex, uint8 method, bytes memory extraData) internal view virtual;
 
   /**
-   * @dev Used to call specific methods on the strategies. Anyone can call this method, is responsability of the
-   *      IInvestStrategy to check access permissions when needed.
+   * @dev Used to call specific methods on the strategies. The specific vault implementation will define the access
+   *      control mechanism to validate who can execute these calls.
+   *
    * @param strategyIndex The index of the strategy in the _strategies array
    * @param method Id of the method to call. Is recommended that the strategy defines an enum with the methods that
    *               can be called externally and validates this value.
@@ -281,7 +324,14 @@ abstract contract MSVBase is IExposeStorage {
     strategy.dcDisconnect(force);
     emit StrategyRemoved(strategy, strategyIndex);
   }
-
+  /**
+   * @dev Updates the deposit queue with a new one.
+   *
+   * @notice Emits DepositQueueChanged(uint8[]) when updating the deposit queue.
+   *
+   * @param newDepositQueue_ New deposit queue, the lenght must be the same of the installed strategies without
+   *                         repeated indexes
+   */
   function changeDepositQueue(uint8[] memory newDepositQueue_) public virtual {
     bool[MAX_STRATEGIES] memory seen;
     uint256 i = 0;
@@ -297,6 +347,14 @@ abstract contract MSVBase is IExposeStorage {
     emit DepositQueueChanged(newDepositQueue_);
   }
 
+  /**
+   * @dev Updates the withdraw queue with a new one.
+   *
+   * @notice Emits WithdrawQueueChanged(uint8[]) when updating the deposit queue.
+   *
+   * @param newWithdrawQueue_ New withdrawal queue, the lenght must be the same of the installed strategies without
+   *                          repeated indexes
+   */
   function changeWithdrawQueue(uint8[] memory newWithdrawQueue_) public virtual {
     bool[MAX_STRATEGIES] memory seen;
     uint8 i = 0;
@@ -313,7 +371,10 @@ abstract contract MSVBase is IExposeStorage {
   }
 
   /**
-   * @dev Moves funds from one strategy to the other.
+   * @dev Moves funds from one strategy to another.
+   *
+   * @notice Emits {Rebalance(strategyFrom, strategyTo, amount)}
+   *
    * @param strategyFromIdx The index of the strategy that will provide the funds in the _strategies array
    * @param strategyToIdx The index of the strategy that will receive the funds in the _strategies array
    * @param amount The amount to transfer from one strategy to the other. type(uint256).max to move all the assets.
@@ -333,6 +394,10 @@ abstract contract MSVBase is IExposeStorage {
     return amount;
   }
 
+  /**
+   * @dev Returns the list of strategies in the vault in order.
+   *      The array is filled with zero addresses after the first one that is address(0).
+   */
   function strategies() external view returns (IInvestStrategy[MAX_STRATEGIES] memory) {
     return _strategies;
   }

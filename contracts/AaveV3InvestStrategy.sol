@@ -10,6 +10,7 @@ import {InvestStrategyClient} from "./InvestStrategyClient.sol";
 
 /**
  * @title AaveV3InvestStrategy
+ *
  * @dev Strategy that invests/deinvests into AaveV3 on each deposit/withdraw.
  *
  * @custom:security-contact security@ensuro.co
@@ -44,21 +45,25 @@ contract AaveV3InvestStrategy is IInvestStrategy {
     return _aave.getReserveData(address(_asset));
   }
 
+  /// @inheritdoc IInvestStrategy
   function connect(bytes memory initData) external virtual override onlyDelegCall {
     if (initData.length != 0) revert NoExtraDataAllowed();
   }
 
+  /// @inheritdoc IInvestStrategy
   function disconnect(bool force) external virtual override onlyDelegCall {
     IERC20 aToken = IERC20(_reserveData().aTokenAddress);
     if (!force && aToken.balanceOf(address(this)) != 0) revert CannotDisconnectWithAssets();
   }
 
+  /// @inheritdoc IInvestStrategy
   function maxWithdraw(address contract_) public view virtual override returns (uint256) {
     DataTypes.ReserveData memory reserve = _reserveData();
     if (!reserve.configuration.getActive() || reserve.configuration.getPaused()) return 0;
     return IERC20(reserve.aTokenAddress).balanceOf(contract_);
   }
 
+  /// @inheritdoc IInvestStrategy
   function maxDeposit(address /*contract_*/) public view virtual override returns (uint256) {
     DataTypes.ReserveData memory reserve = _reserveData();
     if (!reserve.configuration.getActive() || reserve.configuration.getPaused() || reserve.configuration.getFrozen())
@@ -67,18 +72,22 @@ contract AaveV3InvestStrategy is IInvestStrategy {
     return type(uint256).max;
   }
 
+  /// @inheritdoc IInvestStrategy
   function asset(address) public view virtual override returns (address) {
     return address(_asset);
   }
 
+  /// @inheritdoc IInvestStrategy
   function totalAssets(address contract_) public view virtual override returns (uint256 assets) {
     return IERC20(_reserveData().aTokenAddress).balanceOf(contract_);
   }
 
+  /// @inheritdoc IInvestStrategy
   function withdraw(uint256 assets) external virtual override onlyDelegCall {
     if (assets != 0) _aave.withdraw(address(_asset), assets, address(this));
   }
 
+  /// @inheritdoc IInvestStrategy
   function deposit(uint256 assets) external virtual override onlyDelegCall {
     if (assets != 0) _supply(assets);
   }
@@ -88,6 +97,7 @@ contract AaveV3InvestStrategy is IInvestStrategy {
     _aave.supply(address(_asset), assets, address(this), 0);
   }
 
+  /// @inheritdoc IInvestStrategy
   function forwardEntryPoint(uint8, bytes memory) external view onlyDelegCall returns (bytes memory) {
     // solhint-disable-next-line gas-custom-errors,reason-string
     revert();

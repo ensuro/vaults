@@ -62,30 +62,47 @@ contract SwapStableInvestStrategy is IInvestStrategy {
     return 10 ** (18 - token.decimals());
   }
 
+  /// @inheritdoc IInvestStrategy
   function connect(bytes memory initData) external virtual override onlyDelegCall {
     _setSwapConfig(SwapLibrary.SwapConfig(SwapLibrary.SwapProtocol.undefined, 0, bytes("")), initData);
   }
 
+  /// @inheritdoc IInvestStrategy
   function disconnect(bool force) external virtual override onlyDelegCall {
     if (!force && _investAsset.balanceOf(address(this)) != 0) revert CannotDisconnectWithAssets();
   }
 
+  /// @inheritdoc IInvestStrategy
   function maxWithdraw(address contract_) public view virtual override returns (uint256) {
     return totalAssets(contract_); // TODO: check how much can be swapped without breaking the slippage
   }
 
+  /// @inheritdoc IInvestStrategy
   function maxDeposit(address /*contract_*/) public view virtual override returns (uint256) {
     return type(uint256).max; // TODO: check how much can be swapped without breaking the slippage
   }
 
+  /// @inheritdoc IInvestStrategy
   function asset(address) public view virtual override returns (address) {
     return address(_asset);
   }
 
+  /**
+   * @dev Returns the address of the asset invested in the strategy.
+   */
   function investAsset(address) public view returns (address) {
     return address(_investAsset);
   }
 
+  /**
+   * @dev Converts a given amount of investAssets into assets, considering the difference in decimals and the
+   *      maxSlippage accepted
+   *
+   * @param investAssets Amount in investAssets
+   * @param contract_ The address of the vault, not used in the implementation, but it might be required by
+   *                  inheriting contracts.
+   * @return assets The minimum amount in assets that will result from swapping `investAssets`
+   */
   function _convertAssets(uint256 investAssets, address contract_) internal view virtual returns (uint256 assets) {
     return
       Math.mulDiv(
@@ -95,10 +112,17 @@ contract SwapStableInvestStrategy is IInvestStrategy {
       ) / _toWadFactor(_asset);
   }
 
+  /// @inheritdoc IInvestStrategy
   function totalAssets(address contract_) public view virtual override returns (uint256 assets) {
     return _convertAssets(_investAsset.balanceOf(contract_), contract_);
   }
 
+  /// @inheritdoc IInvestStrategy
+  /**
+   * @dev Withdraws the amount of assets given from the strategy swapping _investAsset to _asset
+   *
+   * @param assets Amount of assets to be withdrawn.
+   */
   function withdraw(uint256 assets) public virtual override onlyDelegCall {
     if (assets == 0) return;
     SwapLibrary.SwapConfig memory swapConfig = abi.decode(
@@ -116,6 +140,12 @@ contract SwapStableInvestStrategy is IInvestStrategy {
     }
   }
 
+  /// @inheritdoc IInvestStrategy
+  /**
+   * @dev Deposit the amount of assets given into the strategy by swapping _asset to _investAsset
+   *
+   * @param assets Amount of assets to be deposited.
+   */
   function deposit(uint256 assets) public virtual override onlyDelegCall {
     if (assets == 0) return;
     SwapLibrary.SwapConfig memory swapConfig = abi.decode(
@@ -134,9 +164,13 @@ contract SwapStableInvestStrategy is IInvestStrategy {
     StorageSlot.getBytesSlot(storageSlot).value = newSwapConfigAsBytes;
   }
 
+  /// @inheritdoc IInvestStrategy
   function forwardEntryPoint(uint8 method, bytes memory params) external onlyDelegCall returns (bytes memory) {
     ForwardMethods checkedMethod = ForwardMethods(method);
     if (checkedMethod == ForwardMethods.setSwapConfig) {
+      // The change of the swap config, that involves both the DEX to use and the maxSlippage is a critical operation
+      // that should be access controlled, probably imposing timelocks, because it can produce a conversion of the
+      // assets at a non-fair price
       _setSwapConfig(_getSwapConfig(address(this)), params);
     }
     // Should never reach to this revert, since method should be one of the enum values but leave it in case
@@ -152,6 +186,11 @@ contract SwapStableInvestStrategy is IInvestStrategy {
     return abi.decode(swapConfigAsBytes, (SwapLibrary.SwapConfig));
   }
 
+  /**
+   * @dev Returns the swap configuration of the given contract.
+   *
+   * @param contract_ Address of the vault contract
+   */
   function getSwapConfig(address contract_) public view returns (SwapLibrary.SwapConfig memory) {
     return _getSwapConfig(contract_);
   }

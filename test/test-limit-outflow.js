@@ -1,5 +1,5 @@
 const { expect } = require("chai");
-const { amountFunction, getRole } = require("@ensuro/utils/js/utils");
+const { amountFunction } = require("@ensuro/utils/js/utils");
 const { WEEK, DAY } = require("@ensuro/utils/js/constants");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const { encodeDummyStorage, tagit, makeAllViewsPublic, mergeFragments, setupAMRole } = require("./utils");

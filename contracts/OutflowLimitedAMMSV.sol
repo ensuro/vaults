@@ -15,7 +15,10 @@ import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
  *      withdraw/redeem/mint/deposit methods.
  *
  *      The limit is applied for TWO `slotSize` periods. So for example if slotSize=1 day and limit=100K, this means
- *      that up to 100K of outflows every two calendar days are acceptable.
+ *      that up to 100K of outflows every two consecutive calendar days are acceptable.
+
+ *      The vault MUST be deployed behind an AccessManagedProxy that controls the access to the critical methods
+ *      Since this contract DOESN'T DO ANY ACCESS CONTROL.
  *
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
@@ -30,12 +33,6 @@ contract OutflowLimitedAMMSV is AccessManagedMSV {
     uint128 slotSize; // Duration in seconds of the time slots
     uint128 limit; // Limit of outflows in a given slot + the previous one
     mapping(SlotIndex => int256) assetsDelta; // Variation in assets in a given slot
-  }
-
-  enum MethodType {
-    other,
-    enter,
-    exit
   }
 
   event LimitChanged(uint256 slotSize, uint256 newLimit);
@@ -56,9 +53,6 @@ contract OutflowLimitedAMMSV is AccessManagedMSV {
   /**
    * @dev Changes the limit and the timeframe used to track it.
    *
-   * @notice This method doesn't have built-in access control. The access control validation is supposed to be
-   *         implemented by the proxy. But this SHOULDN'T be publicly available.
-   *
    * @param slotSize The duration in seconds of the timeframe used to limit the amount of outflows.
    * @param limit    The max amount of outflows that will be allowed in a given time slot.
    */
@@ -69,18 +63,39 @@ contract OutflowLimitedAMMSV is AccessManagedMSV {
     emit LimitChanged(slotSize, limit);
   }
 
+  /**
+   * @dev Returns the current time slot size in seconds.
+   */
   function getOutflowLimitSlotSize() external view returns (uint256) {
     return _getLOMStorage().slotSize;
   }
 
+  /**
+   * @dev Returns the net outflow limit that will be applied on two consecutive time slots
+   */
   function getOutflowLimit() external view returns (uint256) {
     return _getLOMStorage().limit;
   }
 
+  /**
+   * @dev The current delta variation in assets for the given slot.
+   *      Calculated as the sum of limit + deposits - withdrawals.
+   * @param slot The given slot to check the delta. Compatible with the slot calculated by makeOutflowSlot.
+   * @return The net flows in a slot (positive for inflows, more deposits than withdrawals, negative otherwise)
+   */
   function getAssetsDelta(SlotIndex slot) external view returns (int256) {
     return _getLOMStorage().assetsDelta[slot];
   }
 
+  /**
+   * @dev Computes the SlotIndex datatype comining both the slotSize and the index in which the timestamp is in
+   *      a line of time that starts at epoch, with slots of slotSize
+   *
+   * @param slotSize The size of the slot in seconds that splits the timeline
+   * @param timestamp The time for which we want to calculate the slot.
+   * @return Returns a SlotIndex datatype that's the combination of the slotSize and the index in which the timestamp
+   *         falls
+   */
   function makeOutflowSlot(uint256 slotSize, uint40 timestamp) external pure returns (SlotIndex) {
     return SlotIndex.wrap((slotSize << 128) + timestamp / slotSize);
   }
@@ -89,14 +104,12 @@ contract OutflowLimitedAMMSV is AccessManagedMSV {
    * @dev Manually changes the delta in a given slot. Used to exceptionally allow or disallow limits different than
    *      the configured ones or to reset the limit when a valid operation is verified.
    *
-   * @notice This method doesn't have built-in access control. The access control validation is supposed to be
-   *         implemented by the proxy. But this SHOULDN'T be publicly available.
-   *
    * @param slot Identification of the slot to modify.
-   *             The slot is computed as `slotSize << 128 + block.timestamp / slotSize`
-   * @param newDelta The delta in assets to store in a given slot
+   *             The slot is computed as `slotSize << 128 + block.timestamp / slotSize` (See {makeOutflowSlot})
+   * @param deltaChange The modification to apply to the registered inflows in a given slot. Positive to increase the
+   *                    inflows, negative to decrease the outflows.
+   * @return newDelta The resulting delta in the slot after applying the change
    */
-  // solhint-disable-next-line func-name-mixedcase
   function changeDelta(SlotIndex slot, int256 deltaChange) external returns (int256 newDelta) {
     int256 oldDelta = _getLOMStorage().assetsDelta[slot];
     newDelta = _getLOMStorage().assetsDelta[slot] += deltaChange;

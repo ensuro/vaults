@@ -8,6 +8,15 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
+/**
+ * @title PermissionedERC4626
+ * @dev Base class for permissioned ERC-4626 that use AccessControl for the access permissions.
+ *
+ *      Not used at the moment, since we started to use AccessManagedProxy contracts.
+ *
+ * @custom:security-contact security@ensuro.co
+ * @author Ensuro
+ */
 contract PermissionedERC4626 is AccessControlUpgradeable, UUPSUpgradeable, ERC4626Upgradeable {
   using SafeERC20 for IERC20Metadata;
 

@@ -13,7 +13,10 @@ import {PermissionedERC4626} from "./PermissionedERC4626.sol";
  * @title CompoundV3ERC4626
  * @dev Vault that invests/deinvests into CompoundV3 on each deposit/withdraw. Also, has a method to claim the rewards,
  *      swap them, and reinvests the result into CompoundV3.
- *      Entering or exiting the vault is permissioned, requires LP_ROLE
+ *      Entering or exiting the vault is permissioned, requires LP_ROLE.
+ *
+ *      Use it at your own risk, this is a proof of concept, but it's not used by the authors, we prefer using the
+ *      pluggable strategies (See {CompoundV3InvestStrategy})
  *
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
