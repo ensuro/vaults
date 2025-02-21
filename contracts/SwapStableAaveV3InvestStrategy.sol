@@ -26,8 +26,9 @@ contract SwapStableAaveV3InvestStrategy is SwapStableInvestStrategy {
    * @dev Constructor of the strategy
    *
    * @param asset_ The address of the underlying token used for accounting, depositing, and withdrawing.
-   * @param investAsset_ The address of the tokens hold by the strategy. Typically a rebasing yield bearing token
+   * @param investAsset_ The address of the tokens that are later supplied to AAVE
    * @param price_ Approximate amount of units of _asset required to acquire a unit of _investAsset
+   * @param aave_ Address of AAVE Pool contract
    */
   constructor(
     IERC20Metadata asset_,
@@ -69,13 +70,15 @@ contract SwapStableAaveV3InvestStrategy is SwapStableInvestStrategy {
     if (assets == 0) return;
     // Withdraw everything then deposit the remainder
     _aave.withdraw(address(_investAsset), type(uint256).max, address(this));
+    // This call will convert investAssets to assets
     super.withdraw(assets);
     // Supply the remaining balance again to AAVE - Ignore errors to avoid reverting in case this deposit fails
+    // In the worst case we will have some funds not invested
     _supply(_investAsset.balanceOf(address(this)), true);
   }
 
   function deposit(uint256 assets) public virtual override onlyDelegCall {
-    super.deposit(assets);
+    super.deposit(assets);  // Converts assets to investAssets
     _supply(_investAsset.balanceOf(address(this)), false);
   }
 

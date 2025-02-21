@@ -94,6 +94,15 @@ contract SwapStableInvestStrategy is IInvestStrategy {
     return address(_investAsset);
   }
 
+  /**
+   * @dev Converts a given amount of investAssets into assets, considering the difference in decimals and the
+   *      maxSlippage accepted
+   *
+   * @param investAssets Amount in investAssets
+   * @param contract_ The address of the vault, not used in the implementation, but it might be required by
+   *                  inheriting contracts.
+   * @return assets The minimum amount in assets that will result from swapping `investAssets`
+   */
   function _convertAssets(uint256 investAssets, address contract_) internal view virtual returns (uint256 assets) {
     return
       Math.mulDiv(
@@ -110,8 +119,8 @@ contract SwapStableInvestStrategy is IInvestStrategy {
 
   /// @inheritdoc IInvestStrategy
   /**
-   * @dev Withdraws the amount of assets given from the strategy swapping _investAsset to _asset, to do this swap it calculates the price for conversion.
-   *      This function can only be called through delegatecall.
+   * @dev Withdraws the amount of assets given from the strategy swapping _investAsset to _asset
+   *
    * @param assets Amount of assets to be withdrawn.
    */
   function withdraw(uint256 assets) public virtual override onlyDelegCall {
@@ -133,7 +142,7 @@ contract SwapStableInvestStrategy is IInvestStrategy {
 
   /// @inheritdoc IInvestStrategy
   /**
-   * @dev Deposit the amount of assets given into the strategy swapping _asset to _investAsset, this swap is done using the exchange rate given by _price.
+   * @dev Deposit the amount of assets given into the strategy by swapping _asset to _investAsset
    *
    * @param assets Amount of assets to be deposited.
    */
@@ -159,6 +168,9 @@ contract SwapStableInvestStrategy is IInvestStrategy {
   function forwardEntryPoint(uint8 method, bytes memory params) external onlyDelegCall returns (bytes memory) {
     ForwardMethods checkedMethod = ForwardMethods(method);
     if (checkedMethod == ForwardMethods.setSwapConfig) {
+      // The change of the swap config, that involves both the DEX to use and the maxSlippage is a critical operation
+      // that should be access controlled, probably imposing timelocks, because it can produce a conversion of the
+      // assets at a non-fair price
       _setSwapConfig(_getSwapConfig(address(this)), params);
     }
     // Should never reach to this revert, since method should be one of the enum values but leave it in case
@@ -175,9 +187,9 @@ contract SwapStableInvestStrategy is IInvestStrategy {
   }
 
   /**
-   * @dev Returns the swap configuration of the given contract. It uses the internal function _getSwapConfig that returns the decoded swap configuration structure.
+   * @dev Returns the swap configuration of the given contract.
    *
-   * @param contract_ Address of the contract configuration being requested.
+   * @param contract_ Address of the vault contract
    */
   function getSwapConfig(address contract_) public view returns (SwapLibrary.SwapConfig memory) {
     return _getSwapConfig(contract_);

@@ -12,17 +12,20 @@ import {InvestStrategyClient} from "./InvestStrategyClient.sol";
 
 /**
  * @title CompoundV3InvestStrategy
- * @dev Strategy that invests/deinvests into CompoundV3 on each deposit/withdraw. Also, has a method to claim the rewards,
- *      swap them, and reinvests the result into CompoundV3.
+ * @dev Strategy that invests/deinvests into CompoundV3 on each deposit/withdraw. Also, has a method to claim the
+ *      rewards, swap them, and reinvests the result into CompoundV3.
+ *
+ *      The rewards are not accounted in the totalAssets() until they are claimed. It's advised to claim the rewards
+ *      frequently, to avoid discrete variations on the returns.
+ *
+ *      This strategy as the other IInvestStrategy are supposed to be called with delegateCall by a vault, managing
+ *      the assets on behalf of the vault.
  *
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
 contract CompoundV3InvestStrategy is IInvestStrategy {
   using SwapLibrary for SwapLibrary.SwapConfig;
-
-  bytes32 public constant HARVEST_ROLE = keccak256("HARVEST_ROLE");
-  bytes32 public constant SWAP_ADMIN_ROLE = keccak256("SWAP_ADMIN_ROLE");
 
   address private immutable __self = address(this);
   bytes32 public immutable storageSlot = InvestStrategyClient.makeStorageSlot(this);
@@ -31,14 +34,33 @@ contract CompoundV3InvestStrategy is IInvestStrategy {
   ICometRewards internal immutable _rewardsManager;
   address internal immutable _baseToken;
 
+  /**
+   * @dev Emitted when the rewards are claimed
+   *
+   * @param token The token in which the rewards are denominated
+   * @param rewards Amount of rewards received (in units of token)
+   * @param receivedInAsset Amount of `asset()` received in exchange of the rewards sold
+   */
   event RewardsClaimed(address token, uint256 rewards, uint256 receivedInAsset);
 
+  /**
+   * @dev Emitted when the swap config is changed. This swap config is used to swap the rewards for assets``
+   *
+   * @param oldConfig The swap configuration before the change
+   * @param newConfig The swap configuration after the change
+   */
   event SwapConfigChanged(SwapLibrary.SwapConfig oldConfig, SwapLibrary.SwapConfig newConfig);
 
   error CanBeCalledOnlyThroughDelegateCall();
   error CannotDisconnectWithAssets();
   error NoExtraDataAllowed();
 
+  /**
+   * @dev "Methods" called from the vault to execute different operations on the strategy
+   *
+   * @enum harvestRewards Used to trigger the claim of rewards and the swap of them for `asset`
+   * @enum setSwapConfig Used to change the swap configuration, used for selling the rewards
+   */
   enum ForwardMethods {
     harvestRewards,
     setSwapConfig
@@ -49,6 +71,13 @@ contract CompoundV3InvestStrategy is IInvestStrategy {
     _;
   }
 
+  /**
+   * @dev Constructor of the strategy.
+   *
+   * @param cToken_ The address of the cToken (compound pool) where funds will be supplied. The strategy asset()
+   *                will be `cToken_.baseToken()`.
+   * @param rewardsManager_ The address of the rewards manager contract that will be used to claim the rewards
+   */
   constructor(ICompoundV3 cToken_, ICometRewards rewardsManager_) {
     _cToken = cToken_;
     _rewardsManager = rewardsManager_;
@@ -130,9 +159,18 @@ contract CompoundV3InvestStrategy is IInvestStrategy {
   function forwardEntryPoint(uint8 method, bytes memory params) external onlyDelegCall returns (bytes memory) {
     ForwardMethods checkedMethod = ForwardMethods(method);
     if (checkedMethod == ForwardMethods.harvestRewards) {
+      // The harvestRewards receives the price as an input, expressed in wad as the units of the reward token
+      // required to by one unit of `asset()`.
+      // For example if reward token is COMP and asset is USDC, and price of COMP is $ 100,
+      // Then we should receive 0.01 (in wad).
+      // This is a permissioned call, and someone giving a wrong price can make the strategy sell the rewards at
+      // a zero price. So you should be carefull regarding who can call this method, if rewards are a relevant part
+      // of the returns
       uint256 price = abi.decode(params, (uint256));
       _harvestRewards(price);
     } else if (checkedMethod == ForwardMethods.setSwapConfig) {
+      // This method receives the new swap config to be used when swapping rewards for asset().
+      // A wrong swap config, with high slippage, might affect the conversion rate of the rewards into assets
       _setSwapConfig(_getSwapConfig(address(this)), params);
     }
     // Show never reach to this revert, since method should be one of the enum values but leave it in case

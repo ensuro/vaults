@@ -10,6 +10,7 @@ import {InvestStrategyClient} from "./InvestStrategyClient.sol";
 
 /**
  * @title AaveV3InvestStrategy
+ *
  * @dev Strategy that invests/deinvests into AaveV3 on each deposit/withdraw.
  *
  * @custom:security-contact security@ensuro.co
