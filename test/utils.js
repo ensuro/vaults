@@ -16,7 +16,7 @@ function dummyStorage({ failConnect, failDisconnect, failDeposit, failWithdraw }
   return [failConnect || false, failDisconnect || false, failDeposit || false, failWithdraw || false];
 }
 
-const tagRegExp = new RegExp("\\[(?<neg>[!])?(?<variant>[a-zA-Z0-9]+)\\]", "gu");
+const tagRegExp = new RegExp("\\[(?<neg>[!])?(?<variant>[a-zA-Z0-9+]+)\\]", "gu");
 
 function tagit(testDescription, test, only = false) {
   let any = false;
