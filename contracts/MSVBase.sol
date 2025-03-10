@@ -279,7 +279,7 @@ abstract contract MSVBase is IExposeStorage {
     if (strategyIndex >= MAX_STRATEGIES) revert InvalidStrategy();
     IInvestStrategy strategy = _strategies[strategyIndex];
     if (address(strategy) == address(0)) revert InvalidStrategy();
-    if (strategy.totalAssets() != 0) revert CannotRemoveStrategyWithAssets();
+    if (!force && strategy.totalAssets() != 0) revert CannotRemoveStrategyWithAssets();
     // Check isn't removing the last one
     if (strategyIndex == 0 && address(_strategies[1]) == address(0)) revert InvalidStrategiesLength();
     // Shift the following strategies in the array
