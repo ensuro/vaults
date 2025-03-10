@@ -110,9 +110,10 @@ abstract contract MSVBase is IExposeStorage {
   }
 
   function _maxWithdrawable(uint256 limit) internal view returns (uint256 ret) {
+    bool addSuccess;
     for (uint256 i; address(_strategies[i]) != address(0) && i < MAX_STRATEGIES; i++) {
-      ret += _strategies[i].maxWithdraw();
-      if (ret >= limit) return limit;
+      (addSuccess, ret) = Math.tryAdd(ret, _strategies[i].maxWithdraw());
+      if (!addSuccess || ret >= limit) return limit;
     }
     return ret;
   }
@@ -122,10 +123,10 @@ abstract contract MSVBase is IExposeStorage {
    *      total assets could be deposited.
    */
   function _maxDepositable() internal view returns (uint256 ret) {
+    bool addSuccess;
     for (uint256 i; address(_strategies[i]) != address(0) && i < MAX_STRATEGIES; i++) {
-      uint256 maxDep = _strategies[i].maxDeposit();
-      if (maxDep == type(uint256).max) return maxDep;
-      ret += maxDep;
+      (addSuccess, ret) = Math.tryAdd(ret, _strategies[i].maxDeposit());
+      if (!addSuccess) return type(uint256).max;
     }
     return ret;
   }
