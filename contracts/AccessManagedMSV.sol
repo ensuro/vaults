@@ -139,7 +139,7 @@ contract AccessManagedMSV is MSVBase, UUPSUpgradeable, ERC4626Upgradeable {
   function getForwardToStrategySelector(uint8 strategyIndex, uint8 method) public view returns (bytes4 selector) {
     // I assemble a fake selector combining the address of the strategy, the index, and the method called
     address strategy = address(_strategies[strategyIndex]);
-    return (bytes4(bytes1(strategyIndex)) >> 8) ^ (bytes4(bytes1(method))) ^ bytes4(bytes20(strategy));
+    return bytes4(keccak256(abi.encode(strategy, method)));
   }
 
   /// @inheritdoc MSVBase
