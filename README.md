@@ -52,6 +52,6 @@ The current implemented strategies are:
 - **SwapStableAaveV3InvestStrategy**: it swaps the asset and invests it into AAVE. Useful for equivalent assets that
   have different returns on AAVE like Bridged USDC vs Native USDC.
 
-**WARNING**: the underlying asset of each strategy should be different, and don't overlap with other strategies'
+**WARNING**: the underlying asset of each strategy should be different, and not overlap with other strategies'
 underlying assets, because this can produce double-counting in the totalAssets() method. Be careful of this when
 adding a new strategy to an existing vault.
