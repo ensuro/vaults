@@ -53,6 +53,9 @@ contract OutflowLimitedAMMSV is AccessManagedMSV {
   /**
    * @dev Changes the limit and the timeframe used to track it.
    *
+   * WARNING: changing the slotSize effectivelly resets the recorded outflows, so after this call (if slotSize
+   * changed), the delta will be zero.
+   *
    * @param slotSize The duration in seconds of the timeframe used to limit the amount of outflows.
    * @param limit    The max amount of outflows that will be allowed in a given time slot.
    */
