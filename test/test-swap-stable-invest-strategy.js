@@ -401,3 +401,42 @@ variants.forEach((variant) => {
     });
   });
 });
+
+describe("SwapStableInvestStrategy constructor tests", function () {
+  it("It reverts when asset or invest asset has >18 decimals", async () => {
+    const [, lp, lp2, admin] = await ethers.getSigners();
+    const SwapLibrary = await ethers.getContractFactory("SwapLibrary");
+    const swapLibrary = await SwapLibrary.deploy();
+    const SwapStableInvestStrategy = await ethers.getContractFactory("SwapStableInvestStrategy", {
+      libraries: {
+        SwapLibrary: await ethers.resolveAddress(swapLibrary),
+      },
+    });
+    const USD6 = await initCurrency({
+      name: "Test Currency with 6 decimals",
+      symbol: "USD6",
+      decimals: 6,
+      initial_supply: _A(50000),
+      extraArgs: [admin],
+    });
+    const USD20 = await initCurrency({
+      name: "Another test Currency with 20 decimals",
+      symbol: "USD20",
+      decimals: 20,
+      initial_supply: _A(50000),
+      extraArgs: [admin],
+    });
+    await expect(SwapStableInvestStrategy.deploy(USD6, USD20, _W(1))).to.be.revertedWithCustomError(
+      SwapStableInvestStrategy,
+      "InvalidAsset"
+    );
+    await expect(SwapStableInvestStrategy.deploy(USD20, USD6, _W(1))).to.be.revertedWithCustomError(
+      SwapStableInvestStrategy,
+      "InvalidAsset"
+    );
+    await expect(SwapStableInvestStrategy.deploy(USD6, USD6, _W(1))).to.be.revertedWithCustomError(
+      SwapStableInvestStrategy,
+      "InvalidAsset"
+    );
+  });
+});
