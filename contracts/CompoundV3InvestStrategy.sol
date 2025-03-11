@@ -91,7 +91,11 @@ contract CompoundV3InvestStrategy is IInvestStrategy {
 
   /// @inheritdoc IInvestStrategy
   function disconnect(bool force) external virtual override onlyDelegCall {
-    if (!force && _cToken.balanceOf(address(this)) != 0) revert CannotDisconnectWithAssets();
+    if (!force) {
+      if (_cToken.balanceOf(address(this)) != 0) revert CannotDisconnectWithAssets();
+      ICometRewards.RewardOwed memory owed = _rewardsManager.getRewardOwed(address(_cToken), address(this));
+      if (owed.token != address(0) && owed.owed != 0) revert CannotDisconnectWithAssets();
+    }
   }
 
   /// @inheritdoc IInvestStrategy

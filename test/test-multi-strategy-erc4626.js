@@ -821,6 +821,44 @@ variants.forEach((variant) => {
       await invariantChecks(vault);
     });
 
+    variant.tagit("It can removeStrategy only if doesn't have funds unless forced", async () => {
+      const { deployVault, lp, lp2, currency, grantRole, grantForwardToStrategy, strategies } =
+        await helpers.loadFixture(variant.fixture);
+      const vault = await deployVault(3, undefined, [1, 0, 2], [2, 0, 1]);
+      await currency.connect(lp).approve(vault, MaxUint256);
+      await grantRole(vault, "LP_ROLE", lp);
+      await expect(vault.connect(lp).mint(_A(100), lp)).not.to.be.reverted;
+      await invariantChecks(vault);
+
+      expect(await vault.totalAssets()).to.be.equal(_A(100));
+      // Check money went to strategy[3]
+      expect(await currency.balanceOf(await strategies[1].other())).to.be.equal(_A(100));
+
+      await expect(vault.connect(lp2).removeStrategy(0, false)).to.be[variant.accessError](
+        vault,
+        lp2,
+        "STRATEGY_ADMIN_ROLE"
+      );
+
+      await grantRole(vault, "STRATEGY_ADMIN_ROLE", lp2);
+
+      await expect(vault.connect(lp2).removeStrategy(33, false)).to.be.revertedWithCustomError(
+        vault,
+        "InvalidStrategy"
+      );
+      await expect(vault.connect(lp2).removeStrategy(5, false)).to.be.revertedWithCustomError(vault, "InvalidStrategy");
+      await expect(vault.connect(lp2).removeStrategy(1, false)).to.be.revertedWithCustomError(
+        vault,
+        "CannotRemoveStrategyWithAssets"
+      );
+
+      // When forced, it can remove the strategy
+      await expect(vault.connect(lp2).removeStrategy(1, true))
+        .to.emit(vault, "StrategyRemoved")
+        .withArgs(strategies[1], 1);
+      await invariantChecks(vault);
+    });
+
     variant.tagit("It can removeStrategy only if doesn't have funds", async () => {
       const { deployVault, lp, lp2, currency, grantRole, grantForwardToStrategy, strategies } =
         await helpers.loadFixture(variant.fixture);
