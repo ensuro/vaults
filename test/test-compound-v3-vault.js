@@ -549,6 +549,14 @@ variants.forEach((variant) => {
       );
     });
 
+    variant.tagit("Checks strategy can't be constructed with rewards=0 [CompoundV3Strategy]", async () => {
+      const { CompoundV3InvestStrategy } = await helpers.loadFixture(variant.fixture);
+      await expect(CompoundV3InvestStrategy.deploy(ADDRESSES.cUSDCv3, ZeroAddress)).to.be.revertedWithCustomError(
+        CompoundV3InvestStrategy,
+        "RewardsManagerRequired"
+      );
+    });
+
     variant.tagit("Checks reverts if extraData is sent on initialization [!CompoundV3ERC4626]", async () => {
       if (variant.accessManaged) return; // tagit doens't support double neg
       const {

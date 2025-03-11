@@ -34,6 +34,7 @@ contract SwapStableInvestStrategy is IInvestStrategy {
   error CanBeCalledOnlyThroughDelegateCall();
   error CannotDisconnectWithAssets();
   error NoExtraDataAllowed();
+  error InvalidAsset();
 
   enum ForwardMethods {
     setSwapConfig
@@ -52,6 +53,9 @@ contract SwapStableInvestStrategy is IInvestStrategy {
    * @param price_ Approximate amount of units of _asset required to acquire a unit of _investAsset
    */
   constructor(IERC20Metadata asset_, IERC20Metadata investAsset_, uint256 price_) {
+    require(asset_.decimals() <= 18, InvalidAsset());
+    require(investAsset_.decimals() <= 18, InvalidAsset());
+    require(asset_ != investAsset_, InvalidAsset());
     _asset = asset_;
     _investAsset = investAsset_;
     _price = price_;

@@ -54,6 +54,7 @@ contract CompoundV3InvestStrategy is IInvestStrategy {
   error CanBeCalledOnlyThroughDelegateCall();
   error CannotDisconnectWithAssets();
   error NoExtraDataAllowed();
+  error RewardsManagerRequired();
 
   /**
    * @dev "Methods" called from the vault to execute different operations on the strategy
@@ -79,6 +80,7 @@ contract CompoundV3InvestStrategy is IInvestStrategy {
    * @param rewardsManager_ The address of the rewards manager contract that will be used to claim the rewards
    */
   constructor(ICompoundV3 cToken_, ICometRewards rewardsManager_) {
+    require(address(rewardsManager_) != address(0), RewardsManagerRequired());
     _cToken = cToken_;
     _rewardsManager = rewardsManager_;
     _baseToken = cToken_.baseToken();
