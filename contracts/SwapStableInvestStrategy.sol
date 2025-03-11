@@ -20,8 +20,7 @@ import {InvestStrategyClient} from "./InvestStrategyClient.sol";
 contract SwapStableInvestStrategy is IInvestStrategy {
   using SwapLibrary for SwapLibrary.SwapConfig;
 
-  bytes32 public constant SWAP_ADMIN_ROLE = keccak256("SWAP_ADMIN_ROLE");
-  uint256 public constant WAD = 1e18;
+  uint256 private constant WAD = 1e18;
 
   address private immutable __self = address(this);
   bytes32 public immutable storageSlot = InvestStrategyClient.makeStorageSlot(this);
