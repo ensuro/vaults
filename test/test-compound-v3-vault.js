@@ -738,6 +738,76 @@ variants.forEach((variant) => {
       expect(await vault.totalSupply()).to.be.equal(_A(3000));
     });
 
+    variant.tagit("Checks it can't disconnect without harvesting rewards [CompoundV3Strategy]", async () => {
+      const { vault, admin, anon, lp, lp2, strategy } = await helpers.loadFixture(variant.fixture);
+
+      await expect(vault.connect(lp).mint(_A(1000), lp)).not.to.be.reverted;
+      await expect(vault.connect(lp2).mint(_A(2000), lp2)).not.to.be.reverted;
+
+      expect(await vault.totalAssets()).to.be.closeTo(_A(3000), MCENT);
+      // Using MultiStrategyERC4626
+      await variant.accessControlCheck(
+        variant.harvestRewards(vault.connect(anon), _A(100)),
+        anon,
+        "FORWARD_TO_STRATEGY_ROLE",
+        vault
+      );
+      await grantRole(hre, vault.connect(admin), "FORWARD_TO_STRATEGY_ROLE", anon);
+      // Still fails because other role is missing
+      const specificRole = await vault.getForwardToStrategyRole(0, CompoundV3StrategyMethods.harvestRewards);
+      await variant.accessControlCheck(variant.harvestRewards(vault.connect(anon), _A(100)), anon, specificRole, vault);
+      await grantRole(hre, vault.connect(admin), specificRole, anon);
+
+      await expect(variant.harvestRewards(vault.connect(anon), _A(100))).to.be.revertedWith("AS");
+
+      await helpers.time.increase(MONTH);
+      const assets = await vault.totalAssets();
+      expect(assets).to.be.closeTo(_A("3028.53"), CENT);
+
+      const DummyInvestStrategy = await ethers.getContractFactory("DummyInvestStrategy");
+      const dummyStrategy = await DummyInvestStrategy.deploy(ADDRESSES.USDC);
+
+      await grantRole(hre, vault.connect(admin), "STRATEGY_ADMIN_ROLE", anon);
+      await expect(
+        vault.connect(anon).replaceStrategy(0, dummyStrategy, encodeDummyStorage({}), false)
+      ).to.be.revertedWithCustomError(strategy, "CannotDisconnectWithAssets");
+
+      // If I hardvest the rewards, it works
+      const tx = await variant.harvestRewards(vault.connect(anon), _W("0.011833165"));
+      await expect(tx).not.to.be.reverted;
+      await expect(vault.connect(anon).replaceStrategy(0, dummyStrategy, encodeDummyStorage({}), false))
+        .to.emit(vault, "StrategyChanged")
+        .withArgs(strategy, dummyStrategy);
+    });
+
+    variant.tagit(
+      "Checks it can disconnect without harvesting rewards if forced [CompoundV3Strategy+AccessManaged]",
+      async () => {
+        const { vault, admin, anon, lp, lp2, strategy, acMgr, roles } = await helpers.loadFixture(variant.fixture);
+
+        await expect(vault.connect(lp).mint(_A(1000), lp)).not.to.be.reverted;
+        await expect(vault.connect(lp2).mint(_A(2000), lp2)).not.to.be.reverted;
+
+        expect(await vault.totalAssets()).to.be.closeTo(_A(3000), MCENT);
+        await acMgr.connect(admin).grantRole(roles.STRATEGY_ADMIN_ROLE, anon, 0);
+
+        await helpers.time.increase(MONTH);
+        const assets = await vault.totalAssets();
+        expect(assets).to.be.closeTo(_A("3028.53"), CENT);
+
+        const DummyInvestStrategy = await ethers.getContractFactory("DummyInvestStrategy");
+        const dummyStrategy = await DummyInvestStrategy.deploy(ADDRESSES.USDC);
+
+        await expect(
+          vault.connect(anon).replaceStrategy(0, dummyStrategy, encodeDummyStorage({}), false)
+        ).to.be.revertedWithCustomError(strategy, "CannotDisconnectWithAssets");
+
+        await expect(vault.connect(anon).replaceStrategy(0, dummyStrategy, encodeDummyStorage({}), true))
+          .to.emit(vault, "StrategyChanged")
+          .withArgs(strategy, dummyStrategy);
+      }
+    );
+
     variant.tagit("Checks only authorized user can change swap config [!AAVEV3Strategy]", async () => {
       const { currency, vault, admin, anon, lp, swapConfig, strategy, swapLibrary, acMgr } = await helpers.loadFixture(
         variant.fixture
