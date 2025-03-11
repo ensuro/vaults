@@ -85,11 +85,11 @@ abstract contract MSVBase is IExposeStorage {
     ) revert InvalidStrategiesLength();
     bool[MAX_STRATEGIES] memory presentInDeposit;
     bool[MAX_STRATEGIES] memory presentInWithdraw;
-    for (uint256 i; i < strategies_.length; i++) {
+    for (uint256 i; i < strategies_.length; ++i) {
       if (address(strategies_[i]) == address(0)) revert InvalidStrategy();
       strategies_[i].checkAsset(_asset());
       // Check strategies_[i] not duplicated
-      for (uint256 j; j < i; j++) {
+      for (uint256 j; j < i; ++j) {
         if (strategies_[i] == strategies_[j]) revert DuplicatedStrategy(strategies_[i]);
       }
       // Check depositQueue_[i] and withdrawQueue_[i] not duplicated and within bounds
@@ -110,7 +110,7 @@ abstract contract MSVBase is IExposeStorage {
   }
 
   function _maxWithdrawable(uint256 limit) internal view returns (uint256 ret) {
-    for (uint256 i; address(_strategies[i]) != address(0) && i < MAX_STRATEGIES; i++) {
+    for (uint256 i; address(_strategies[i]) != address(0) && i < MAX_STRATEGIES; ++i) {
       ret += _strategies[i].maxWithdraw();
       if (ret >= limit) return limit;
     }
@@ -122,7 +122,7 @@ abstract contract MSVBase is IExposeStorage {
    *      total assets could be deposited.
    */
   function _maxDepositable() internal view returns (uint256 ret) {
-    for (uint256 i; address(_strategies[i]) != address(0) && i < MAX_STRATEGIES; i++) {
+    for (uint256 i; address(_strategies[i]) != address(0) && i < MAX_STRATEGIES; ++i) {
       uint256 maxDep = _strategies[i].maxDeposit();
       if (maxDep == type(uint256).max) return maxDep;
       ret += maxDep;
@@ -134,7 +134,7 @@ abstract contract MSVBase is IExposeStorage {
    * @dev Sum up the total assets of each strategy in the vault and returns the total value.
    */
   function _totalAssets() internal view returns (uint256 assets) {
-    for (uint256 i; address(_strategies[i]) != address(0) && i < MAX_STRATEGIES; i++) {
+    for (uint256 i; address(_strategies[i]) != address(0) && i < MAX_STRATEGIES; ++i) {
       assets += _strategies[i].totalAssets();
     }
   }
@@ -146,7 +146,7 @@ abstract contract MSVBase is IExposeStorage {
    */
   function _withdrawFromStrategies(uint256 assets) internal {
     uint256 left = assets;
-    for (uint256 i; left != 0 && _withdrawQueue[i] != 0 && i < MAX_STRATEGIES; i++) {
+    for (uint256 i; left != 0 && _withdrawQueue[i] != 0 && i < MAX_STRATEGIES; ++i) {
       IInvestStrategy strategy = _strategies[_withdrawQueue[i] - 1];
       uint256 toWithdraw = Math.min(left, strategy.maxWithdraw());
       if (toWithdraw == 0) continue;
@@ -164,7 +164,7 @@ abstract contract MSVBase is IExposeStorage {
   function _depositToStrategies(uint256 assets) internal {
     // Transfers the assets from the caller and supplies to compound
     uint256 left = assets;
-    for (uint256 i; left != 0 && _depositQueue[i] != 0 && i < MAX_STRATEGIES; i++) {
+    for (uint256 i; left != 0 && _depositQueue[i] != 0 && i < MAX_STRATEGIES; ++i) {
       IInvestStrategy strategy = _strategies[_depositQueue[i] - 1];
       uint256 toDeposit = Math.min(left, strategy.maxDeposit());
       if (toDeposit == 0) continue;
@@ -179,7 +179,7 @@ abstract contract MSVBase is IExposeStorage {
    *      Only the slot==strategyStorageSlot() can be accessed.
    */
   function getBytesSlot(bytes32 slot) external view override returns (bytes memory) {
-    for (uint256 i; _strategies[i] != IInvestStrategy(address(0)) && i < MAX_STRATEGIES; i++) {
+    for (uint256 i; _strategies[i] != IInvestStrategy(address(0)) && i < MAX_STRATEGIES; ++i) {
       if (slot == _strategies[i].storageSlot()) {
         StorageSlot.BytesSlot storage r = StorageSlot.getBytesSlot(slot);
         return r.value;
@@ -241,7 +241,7 @@ abstract contract MSVBase is IExposeStorage {
   ) public virtual {
     IInvestStrategy strategy = _strategies[strategyIndex];
     if (address(strategy) == address(0)) revert InvalidStrategy();
-    for (uint256 i; i < MAX_STRATEGIES && _strategies[i] != IInvestStrategy(address(0)); i++) {
+    for (uint256 i; i < MAX_STRATEGIES && _strategies[i] != IInvestStrategy(address(0)); ++i) {
       if (_strategies[i] == newStrategy && i != strategyIndex) revert DuplicatedStrategy(newStrategy);
     }
     InvestStrategyClient.strategyChange(strategy, newStrategy, initStrategyData, IERC20Metadata(_asset()), force);
@@ -257,7 +257,7 @@ abstract contract MSVBase is IExposeStorage {
   function addStrategy(IInvestStrategy newStrategy, bytes memory initStrategyData) public virtual {
     if (address(newStrategy) == address(0)) revert InvalidStrategy();
     uint256 i;
-    for (; i < MAX_STRATEGIES && _strategies[i] != IInvestStrategy(address(0)); i++) {
+    for (; i < MAX_STRATEGIES && _strategies[i] != IInvestStrategy(address(0)); ++i) {
       if (_strategies[i] == newStrategy) revert DuplicatedStrategy(newStrategy);
     }
     if (i == MAX_STRATEGIES) revert InvalidStrategiesLength();
@@ -284,14 +284,14 @@ abstract contract MSVBase is IExposeStorage {
     if (strategyIndex == 0 && address(_strategies[1]) == address(0)) revert InvalidStrategiesLength();
     // Shift the following strategies in the array
     uint256 i = strategyIndex + 1;
-    for (; i < MAX_STRATEGIES && _strategies[i] != IInvestStrategy(address(0)); i++) {
+    for (; i < MAX_STRATEGIES && _strategies[i] != IInvestStrategy(address(0)); ++i) {
       _strategies[i - 1] = _strategies[i];
     }
     _strategies[i - 1] = IInvestStrategy(address(0));
     // Shift and change the indexes in the queues
     bool shiftDeposit;
     bool shiftWithdraw;
-    for (i = 0; _withdrawQueue[i] != 0 && i < MAX_STRATEGIES; i++) {
+    for (i = 0; _withdrawQueue[i] != 0 && i < MAX_STRATEGIES; ++i) {
       if (shiftWithdraw) {
         // Already saw the deleted index, shift and change index if greater
         _withdrawQueue[i - 1] = _withdrawQueue[i] - ((_withdrawQueue[i] > (strategyIndex + 1)) ? 1 : 0);
@@ -336,7 +336,7 @@ abstract contract MSVBase is IExposeStorage {
     bool[MAX_STRATEGIES] memory seen;
     uint256 i = 0;
     if (newDepositQueue_.length > MAX_STRATEGIES) revert InvalidQueue();
-    for (; i < newDepositQueue_.length; i++) {
+    for (; i < newDepositQueue_.length; ++i) {
       if (newDepositQueue_[i] >= MAX_STRATEGIES || address(_strategies[newDepositQueue_[i]]) == address(0))
         revert InvalidQueue();
       if (seen[newDepositQueue_[i]]) revert InvalidQueueIndexDuplicated(newDepositQueue_[i]);
@@ -359,7 +359,7 @@ abstract contract MSVBase is IExposeStorage {
     bool[MAX_STRATEGIES] memory seen;
     uint8 i = 0;
     if (newWithdrawQueue_.length > MAX_STRATEGIES) revert InvalidQueue();
-    for (; i < newWithdrawQueue_.length; i++) {
+    for (; i < newWithdrawQueue_.length; ++i) {
       if (newWithdrawQueue_[i] >= MAX_STRATEGIES || address(_strategies[newWithdrawQueue_[i]]) == address(0))
         revert InvalidQueue();
       if (seen[newWithdrawQueue_[i]]) revert InvalidQueueIndexDuplicated(newWithdrawQueue_[i]);
