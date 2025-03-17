@@ -55,3 +55,19 @@ The current implemented strategies are:
 **WARNING**: the underlying asset of each strategy should be different, and not overlap with other strategies'
 underlying assets, because this can produce double-counting in the totalAssets() method. Be careful of this when
 adding a new strategy to an existing vault.
+
+## Code Audits
+
+- Audit by [Quantstamp](https://quantstamp.com/) - 2025-02-24 through 2025-03-03: [AuditReport](audits/2025-03-Quantstamp-Final-Audit-Report.pdf)
+
+## Contributing
+
+Thank you for your interest in Ensuro! Head over to our [Contributing Guidelines](CONTRIBUTING.md) for instructions on how to sign our Contributors Agreement and get started with
+Ensuro!
+
+Please note we have a [Code of Conduct](CODE_OF_CONDUCT.md), please follow it in all your interactions with the project.
+
+## License
+
+The repository and all contributions are licensed under
+[APACHE 2.0](https://www.apache.org/licenses/LICENSE-2.0). Please review our [LICENSE](LICENSE) file.
