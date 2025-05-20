@@ -176,6 +176,19 @@ abstract contract MSVBase is IExposeStorage {
   }
 
   /**
+   * @dev Deposit assets to the strategies in the deposit queue order until zero assets remains to be deposited.
+   *      After finishing the deposit, left must be zero, otherwise reverts, and should never happen.
+   *
+   *      This method might be used by the some strategies to reinject rewards. Left as virtual so child classes
+   *      can implement somekind of access control.
+   *
+   * @param assets The amount of assets to be deposited to the strategies.
+   */
+  function depositToStrategies(uint256 assets) public virtual {
+    _depositToStrategies(assets);
+  }
+
+  /**
    * @dev Exposes a given slot as a bytes array. To be used by the IInvestStrategy views to access their storage.
    *      Only the slot==strategyStorageSlot() can be accessed.
    */
