@@ -27,6 +27,7 @@ contract MultiStrategyERC4626 is MSVBase, PermissionedERC4626 {
   bytes32 public constant QUEUE_ADMIN_ROLE = keccak256("QUEUE_ADMIN_ROLE");
   bytes32 public constant REBALANCER_ROLE = keccak256("REBALANCER_ROLE");
   bytes32 public constant FORWARD_TO_STRATEGY_ROLE = keccak256("FORWARD_TO_STRATEGY_ROLE");
+  bytes32 public constant DEPOSIT_TO_STRATEGIES_ROLE = keccak256("DEPOSIT_TO_STRATEGIES_ROLE");
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor() {
@@ -209,4 +210,18 @@ contract MultiStrategyERC4626 is MSVBase, PermissionedERC4626 {
     onlyRole(FORWARD_TO_STRATEGY_ROLE)
     onlyRole(getForwardToStrategyRole(strategyIndex, method))
   {}
+
+  /**
+   * @dev Deposit assets to the strategies in the deposit queue order until zero assets remains to be deposited.
+   *      After finishing the deposit, left must be zero, otherwise reverts, and should never happen.
+   *
+   *      This method might be used by the some strategies to reinject rewards. Requires DEPOSIT_TO_STRATEGIES_ROLE
+   *      unless the call is made by one of the strategies (msg.sender == address(this))
+   *
+   * @param assets The amount of assets to be deposited to the strategies.
+   */
+  function depositToStrategies(uint256 assets) public override {
+    if (msg.sender != address(this)) _checkRole(DEPOSIT_TO_STRATEGIES_ROLE);
+    _depositToStrategies(assets);
+  }
 }
