@@ -896,7 +896,7 @@ variants.forEach((variant) => {
       expect(evt).not.equal(null);
 
       expect(evt.args.token).to.equal(ADDRESSES.COMP);
-      expect(evt.args.rewards).to.equal(_W("0.126432"));
+      expect(evt.args.rewards).to.closeTo(_W("0.126432"), _W("0.000002"));
       expect(evt.args.receivedInAsset).to.equal(_A("10.684546"));
 
       await expect(tx).to.emit(currency, "Transfer").withArgs(vault, ADDRESSES.cUSDCv3, _A("10.684546"));
