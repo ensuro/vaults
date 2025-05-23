@@ -164,8 +164,11 @@ describe("MultiStrategy Integration fork tests", function () {
         ethers.AbiCoder.defaultAbiCoder().encode(["uint256"], [compUSD])
       );
 
-    expect(await compoundStrategy.totalAssets(vault)).to.closeTo(_A("7070.852454"), CENT);
-    expect(await vault.totalAssets()).to.be.closeTo(_A("12131.977778"), CENT);
+    const rewards = _A("10.3328");
+
+    expect(await aaveStrategy.totalAssets(vault)).to.closeTo(_A("5061.125277") + rewards, CENT);
+    expect(await compoundStrategy.totalAssets(vault)).to.closeTo(_A("7060.519644"), CENT);
+    expect(await vault.totalAssets()).to.be.closeTo(_A("12121.644921") + rewards, CENT);
 
     // Withdraw all the funds
     await vault.connect(lp).redeem(_A(5000), lp, lp);

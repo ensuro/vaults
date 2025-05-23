@@ -356,6 +356,7 @@ const variants = [
         STRATEGY_ADMIN_ROLE: 4,
         QUEUE_ADMIN_ROLE: 5,
         FORWARD_TO_STRATEGY_ROLE: 6,
+        DEPOSIT_TO_STRATEGIES_ROLE: 7,
       };
 
       const vault = await hre.upgrades.deployProxy(
@@ -394,6 +395,7 @@ const variants = [
       await setupAMRole(acMgr.connect(admin), vault, roles, "REBALANCER_ROLE", ["rebalance"]);
 
       await setupAMRole(acMgr.connect(admin), vault, roles, "FORWARD_TO_STRATEGY_ROLE", ["forwardToStrategy"]);
+      await setupAMRole(acMgr.connect(admin), vault, roles, "DEPOSIT_TO_STRATEGIES_ROLE", ["depositToStrategies"]);
 
       await acMgr.connect(admin).grantRole(roles.LP_ROLE, lp, 0);
       await acMgr.connect(admin).grantRole(roles.LP_ROLE, lp2, 0);
@@ -692,6 +694,8 @@ variants.forEach((variant) => {
           vault
         );
         await acMgr.connect(admin).grantRole(roles.FORWARD_TO_STRATEGY_ROLE, anon, 0);
+        // Grant DEPOSIT_TO_STRATEGIES_ROLE to the vault - for reinjection of rewards
+        await acMgr.connect(admin).grantRole(roles.DEPOSIT_TO_STRATEGIES_ROLE, vault, 0);
         // Still fails because other role is missing
         const specificSelector = await vault.getForwardToStrategySelector(0, CompoundV3StrategyMethods.harvestRewards);
         await variant.accessControlCheck(variant.harvestRewards(vault.connect(anon), _A(100)), anon, null, vault);
@@ -817,9 +821,8 @@ variants.forEach((variant) => {
     );
 
     variant.tagit("Checks only authorized user can change swap config [!AAVEV3Strategy]", async () => {
-      const { currency, vault, admin, anon, lp, swapConfig, strategy, swapLibrary, acMgr } = await helpers.loadFixture(
-        variant.fixture
-      );
+      const { currency, vault, admin, anon, lp, swapConfig, strategy, swapLibrary, acMgr, roles } =
+        await helpers.loadFixture(variant.fixture);
 
       expect(await variant.getSwapConfig(vault, strategy)).to.deep.equal(swapConfig);
       await expect(vault.connect(lp).mint(_A(3000), lp)).not.to.be.reverted;
@@ -867,6 +870,10 @@ variants.forEach((variant) => {
           vault
         );
         await grantRole(hre, vault.connect(admin), specificRole, anon);
+      }
+      if (variant.accessManaged) {
+        // Grant DEPOSIT_TO_STRATEGIES_ROLE to the vault - for reinjection of rewards
+        await acMgr.connect(admin).grantRole(roles.DEPOSIT_TO_STRATEGIES_ROLE, vault, 0);
       }
 
       // Check validates new config

@@ -9,6 +9,7 @@ import {IInvestStrategy} from "./interfaces/IInvestStrategy.sol";
 import {StorageSlot} from "@openzeppelin/contracts/utils/StorageSlot.sol";
 import {IExposeStorage} from "./interfaces/IExposeStorage.sol";
 import {InvestStrategyClient} from "./InvestStrategyClient.sol";
+import {MSVBase} from "./MSVBase.sol";
 
 /**
  * @title CompoundV3InvestStrategy
@@ -149,7 +150,8 @@ contract CompoundV3InvestStrategy is IInvestStrategy {
 
     uint256 earned = IERC20(reward).balanceOf(address(this));
     uint256 reinvestAmount = swapConfig.exactInput(reward, _baseToken, earned, price);
-    _supply(reinvestAmount);
+
+    MSVBase(address(this)).depositToStrategies(reinvestAmount);
     emit RewardsClaimed(reward, earned, reinvestAmount);
   }
 
