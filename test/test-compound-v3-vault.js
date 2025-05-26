@@ -335,7 +335,7 @@ const variants = [
     tagit: tagit,
     cToken: ADDRESSES.cUSDCv3,
     supplyToken: ADDRESSES.USDC,
-    fixture: async () => {
+    fixture: async (accessManagedMSVClass = "AccessManagedMSV") => {
       const { currency, adminAddr, swapConfig, admin, lp, lp2, guardian, anon, swapLibrary } = await setUp();
       const CompoundV3InvestStrategy = await ethers.getContractFactory("CompoundV3InvestStrategy", {
         libraries: {
@@ -344,7 +344,7 @@ const variants = [
       });
       const strategy = await CompoundV3InvestStrategy.deploy(ADDRESSES.cUSDCv3, ADDRESSES.REWARDS);
       const AccessManager = await ethers.getContractFactory("AccessManager");
-      const AccessManagedMSV = await ethers.getContractFactory("AccessManagedMSV");
+      const AccessManagedMSV = await ethers.getContractFactory(accessManagedMSVClass);
       const AccessManagedProxy = await ethers.getContractFactory("AccessManagedProxy");
 
       const acMgr = await AccessManager.deploy(admin);
@@ -521,6 +521,14 @@ const variants = [
     },
   },
 ];
+
+// Checks an OutflowLimitiedAMMSV without slotSize set behaves the same way as AccessManagedMSV
+const compAccessVariant = variants.find((variant) => variant.name === "CompoundV3Strategy+AccessManaged");
+variants.push({
+  ...compAccessVariant,
+  name: "CompoundV3Strategy+OutflowLimitiedAMMSV",
+  fixture: async () => compAccessVariant.fixture("OutflowLimitedAMMSV"),
+});
 
 variants.forEach((variant) => {
   describe(`${variant.name} contract tests`, function () {

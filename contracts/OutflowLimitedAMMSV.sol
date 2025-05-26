@@ -56,7 +56,8 @@ contract OutflowLimitedAMMSV is AccessManagedMSV {
    * WARNING: changing the slotSize effectivelly resets the recorded outflows, so after this call (if slotSize
    * changed), the delta will be zero.
    *
-   * @param slotSize The duration in seconds of the timeframe used to limit the amount of outflows.
+   * @param slotSize The duration in seconds of the timeframe used to limit the amount of outflows. Setting slotSize
+   *                 to zero disables the outflow limit checks and the vault behaves like a normal AccessManagedMSV
    * @param limit    The max amount of outflows that will be allowed in a given time slot.
    */
   function setupOutflowLimit(uint256 slotSize, uint256 limit) external {
@@ -132,26 +133,32 @@ contract OutflowLimitedAMMSV is AccessManagedMSV {
     uint256 assets,
     uint256 shares
   ) internal virtual override {
-    SlotIndex slot = _slotIndex();
-
-    // Check delta doesn't exceed the threshold
-    SlotIndex prevSlot = SlotIndex.wrap(SlotIndex.unwrap(slot) - 1);
     LOMStorage storage $ = _getLOMStorage();
-    int256 deltaLastTwoSlots = -int256(assets) + $.assetsDelta[slot] + $.assetsDelta[prevSlot];
-    // To check the limit, uses TWO slots, the current one and the previous one. This is to avoid someone doing
-    // several operations in the slot limit, like withdrawal at 11:59PM and another withdrawal at 12:01 AM.
-    if (deltaLastTwoSlots < 0 && uint256(-deltaLastTwoSlots) > $.limit) revert LimitReached(deltaLastTwoSlots, $.limit);
+    if ($.slotSize != 0) {
+      SlotIndex slot = _slotIndex();
 
-    // Update the delta and pass the message to parent contract
-    $.assetsDelta[slot] -= assets.toInt256();
+      // Check delta doesn't exceed the threshold
+      SlotIndex prevSlot = SlotIndex.wrap(SlotIndex.unwrap(slot) - 1);
+      int256 deltaLastTwoSlots = -int256(assets) + $.assetsDelta[slot] + $.assetsDelta[prevSlot];
+      // To check the limit, uses TWO slots, the current one and the previous one. This is to avoid someone doing
+      // several operations in the slot limit, like withdrawal at 11:59PM and another withdrawal at 12:01 AM.
+      if (deltaLastTwoSlots < 0 && uint256(-deltaLastTwoSlots) > $.limit)
+        revert LimitReached(deltaLastTwoSlots, $.limit);
+
+      // Update the delta and pass the message to parent contract
+      $.assetsDelta[slot] -= assets.toInt256();
+    }
     super._withdraw(caller, receiver, owner, assets, shares);
   }
 
   /// @inheritdoc ERC4626Upgradeable
   function _deposit(address caller, address receiver, uint256 assets, uint256 shares) internal virtual override {
-    // Just update the delta and pass the message to parent contract
-    SlotIndex slot = _slotIndex();
-    _getLOMStorage().assetsDelta[slot] += assets.toInt256();
+    LOMStorage storage $ = _getLOMStorage();
+    if ($.slotSize != 0) {
+      // Just update the delta and pass the message to parent contract
+      SlotIndex slot = _slotIndex();
+      $.assetsDelta[slot] += assets.toInt256();
+    }
     super._deposit(caller, receiver, assets, shares);
   }
 }
