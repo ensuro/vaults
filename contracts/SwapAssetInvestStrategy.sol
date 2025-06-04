@@ -95,7 +95,8 @@ abstract contract SwapAssetInvestStrategy is IInvestStrategy {
   }
 
   /**
-   * @dev Returns the amount of `asset()` required to acquire one unit of `investAsset()`
+   * @dev Returns the amount of `asset()` required to acquire one unit of `investAsset()` or the amount of `asset()`
+   *      that should be received by selling a unit of `investAsset()`. It doesn't consider slippage.
    *
    * @return The amount is expressed in WAD (18 decimals), units: (asset/investAsset)
    */

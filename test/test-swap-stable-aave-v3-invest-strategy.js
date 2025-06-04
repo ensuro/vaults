@@ -1,7 +1,7 @@
 const { expect } = require("chai");
-const { amountFunction, _W, getRole } = require("@ensuro/utils/js/utils");
+const { amountFunction, _W, getRole, tagitVariant } = require("@ensuro/utils/js/utils");
 const { buildUniswapConfig } = require("@ensuro/swaplibrary/js/utils");
-const { encodeSwapConfig, encodeDummyStorage, tagit } = require("./utils");
+const { encodeSwapConfig, encodeDummyStorage } = require("./utils");
 const { initForkCurrency, setupChain } = require("@ensuro/utils/js/test-utils");
 const { anyUint } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 const hre = require("hardhat");
@@ -144,24 +144,24 @@ function makeFixture(asset, investAsset) {
 const variants = [
   {
     name: "USDC(6)->USDC_NATIVE(6) with AAVE",
-    tagit: tagit,
     fixture: makeFixture("USDC", "USDC_NATIVE"),
   },
   {
     name: "USDC(6)->USDT(6) with AAVE",
-    tagit: tagit,
     fixture: makeFixture("USDC", "USDT"),
   },
   {
     name: "USDC(6)->DAI(18) with AAVE",
-    tagit: tagit,
     fixture: makeFixture("USDC", "DAI"),
   },
 ];
 
 variants.forEach((variant) => {
+  const it = (testDescription, test) => tagitVariant(variant, false, testDescription, test);
+  it.only = (testDescription, test) => tagitVariant(variant, true, testDescription, test);
+
   describe(`SwapStableAaveV3InvestStrategy contract tests ${variant.name}`, function () {
-    variant.tagit("Initializes the vault correctly with AAVE", async () => {
+    it("Initializes the vault correctly with AAVE", async () => {
       const { SwapStableAaveV3InvestStrategy, setupVault, currA, currB } = await variant.fixture();
 
       const strategy = await SwapStableAaveV3InvestStrategy.deploy(currA, currB, _W(1), ADDRESSES.AAVEv3);
@@ -177,7 +177,7 @@ variants.forEach((variant) => {
       expect(await strategy.investAsset(vault)).to.equal(currB);
     });
 
-    variant.tagit("Deposit and accounting works", async () => {
+    it("Deposit and accounting works", async () => {
       const { SwapStableAaveV3InvestStrategy, setupVault, currA, currB, aToken, lp, _a, _i } = await variant.fixture();
       const strategy = await SwapStableAaveV3InvestStrategy.deploy(currA, currB, _W(1), ADDRESSES.AAVEv3);
       const vault = await setupVault(currA, strategy);
@@ -187,7 +187,7 @@ variants.forEach((variant) => {
       expect(await currA.balanceOf(vault)).to.equal(_a(0));
     });
 
-    variant.tagit("Withdraw works with original slippage and validates balances", async () => {
+    it("Withdraw works with original slippage and validates balances", async () => {
       const { SwapStableAaveV3InvestStrategy, setupVault, currA, currB, aToken, lp, _a, _i } = await variant.fixture();
       const strategy = await SwapStableAaveV3InvestStrategy.deploy(currA, currB, _W(1), ADDRESSES.AAVEv3);
       const vault = await setupVault(currA, strategy);
@@ -205,7 +205,7 @@ variants.forEach((variant) => {
       expect(await currA.balanceOf(lp)).to.equal(initialLpBalance - _a(40));
     });
 
-    variant.tagit("maxWithdraw returns correct values initially, afert deposit & withdraw", async () => {
+    it("maxWithdraw returns correct values initially, afert deposit & withdraw", async () => {
       const { SwapStableAaveV3InvestStrategy, setupVault, currA, currB, aToken, lp, _a, _i } = await variant.fixture();
       const strategy = await SwapStableAaveV3InvestStrategy.deploy(currA, currB, _W(1), ADDRESSES.AAVEv3);
       const vault = await setupVault(currA, strategy);
@@ -227,7 +227,7 @@ variants.forEach((variant) => {
       expect(maxWithdrawAfterWithdraw).to.equal(await strategy.totalAssets(vault));
     });
 
-    variant.tagit("Checks methods can't be called directly", async () => {
+    it("Checks methods can't be called directly", async () => {
       const { SwapStableAaveV3InvestStrategy, currA, currB } = await variant.fixture();
       const strategy = await SwapStableAaveV3InvestStrategy.deploy(currA, currB, _W(1), ADDRESSES.AAVEv3);
 
@@ -249,7 +249,7 @@ variants.forEach((variant) => {
       );
     });
 
-    variant.tagit("Should disconnect when strategy change & when authorized", async function () {
+    it("Should disconnect when strategy change & when authorized", async function () {
       const { SwapStableAaveV3InvestStrategy, setupVault, currA, currB, anon, admin } = await variant.fixture();
       const strategy = await SwapStableAaveV3InvestStrategy.deploy(currA, currB, _W(1), ADDRESSES.AAVEv3);
       const vault = await setupVault(currA, strategy);
@@ -264,7 +264,7 @@ variants.forEach((variant) => {
       await expect(tx).to.emit(vault, "StrategyChanged").withArgs(strategy, dummyStrategy);
     });
 
-    variant.tagit("Disconnect doesn't fail when changing strategy", async function () {
+    it("Disconnect doesn't fail when changing strategy", async function () {
       const { SwapStableAaveV3InvestStrategy, setupVault, currA, currB, lp, admin, _a } = await variant.fixture();
       const strategy = await SwapStableAaveV3InvestStrategy.deploy(currA, currB, _W(1), ADDRESSES.AAVEv3);
       const vault = await setupVault(currA, strategy);

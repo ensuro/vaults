@@ -1,15 +1,18 @@
 const { expect } = require("chai");
-const { amountFunction, _W, getRole, grantRole, getTransactionEvent } = require("@ensuro/utils/js/utils");
+const {
+  amountFunction,
+  _W,
+  getRole,
+  grantRole,
+  getTransactionEvent,
+  mergeFragments,
+  setupAMRole,
+  makeAllViewsPublic,
+  tagitVariant,
+} = require("@ensuro/utils/js/utils");
 const { initForkCurrency, setupChain } = require("@ensuro/utils/js/test-utils");
 const { buildUniswapConfig } = require("@ensuro/swaplibrary/js/utils");
-const {
-  encodeSwapConfig,
-  encodeDummyStorage,
-  tagit,
-  makeAllViewsPublic,
-  setupAMRole,
-  mergeFragments,
-} = require("./utils");
+const { encodeSwapConfig, encodeDummyStorage } = require("./utils");
 const { anyUint } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
@@ -156,7 +159,6 @@ const SwapStableAaveV3InvestStrategyMethods = {
 const variants = [
   {
     name: "CompoundV3ERC4626",
-    tagit: tagit,
     cToken: ADDRESSES.cUSDCv3,
     fixture: async () => {
       const { currency, swapLibrary, adminAddr, swapConfig, admin, lp, lp2, guardian, anon } = await setUp();
@@ -206,7 +208,6 @@ const variants = [
   },
   {
     name: "CompoundV3Strategy",
-    tagit: tagit,
     cToken: ADDRESSES.cUSDCv3,
     fixture: async () => {
       const { currency, swapLibrary, adminAddr, swapConfig, admin, lp, lp2, guardian, anon } = await setUp();
@@ -278,7 +279,6 @@ const variants = [
   },
   {
     name: "AAVEV3Strategy",
-    tagit: tagit,
     cToken: ADDRESSES.aUSDCv3,
     supplyToken: ADDRESSES.USDC,
     fixture: async () => {
@@ -332,7 +332,6 @@ const variants = [
   },
   {
     name: "CompoundV3Strategy+AccessManaged",
-    tagit: tagit,
     cToken: ADDRESSES.cUSDCv3,
     supplyToken: ADDRESSES.USDC,
     fixture: async (accessManagedMSVClass = "AccessManagedMSV") => {
@@ -452,7 +451,6 @@ const variants = [
   },
   {
     name: "SwapStableAAVEV3Strategy",
-    tagit: tagit,
     supplyToken: ADDRESSES.USDC_NATIVE,
     fixture: async () => {
       const { currency, swapLibrary, adminAddr, admin, lp, lp2, guardian, anon } = await setUp();
@@ -531,12 +529,16 @@ variants.push({
 });
 
 variants.forEach((variant) => {
+  const it = (testDescription, test) => tagitVariant(variant, false, testDescription, test);
+  it.only = (testDescription, test) => tagitVariant(variant, true, testDescription, test);
+  it.foobar = 123;
+
   describe(`${variant.name} contract tests`, function () {
     before(async () => {
       await setupChain(TEST_BLOCK);
     });
 
-    variant.tagit("Checks vault inititializes correctly", async () => {
+    it("Checks vault inititializes correctly", async () => {
       const { currency, vault, admin, anon } = await helpers.loadFixture(variant.fixture);
 
       expect(await vault.name()).to.equal(NAME);
@@ -549,7 +551,7 @@ variants.forEach((variant) => {
       }
     });
 
-    variant.tagit("Checks vault constructs with disabled initializer [CompoundV3ERC4626]", async () => {
+    it("Checks vault constructs with disabled initializer [CompoundV3ERC4626]", async () => {
       const { CompoundV3ERC4626, adminAddr, swapConfig } = await helpers.loadFixture(variant.fixture);
       const newVault = await CompoundV3ERC4626.deploy(ADDRESSES.cUSDCv3, ADDRESSES.REWARDS);
       await expect(newVault.deploymentTransaction()).to.emit(newVault, "Initialized");
@@ -559,7 +561,7 @@ variants.forEach((variant) => {
       );
     });
 
-    variant.tagit("Checks strategy can't be constructed with rewards=0 [CompoundV3Strategy]", async () => {
+    it("Checks strategy can't be constructed with rewards=0 [CompoundV3Strategy]", async () => {
       const { CompoundV3InvestStrategy } = await helpers.loadFixture(variant.fixture);
       await expect(CompoundV3InvestStrategy.deploy(ADDRESSES.cUSDCv3, ZeroAddress)).to.be.revertedWithCustomError(
         CompoundV3InvestStrategy,
@@ -567,7 +569,7 @@ variants.forEach((variant) => {
       );
     });
 
-    variant.tagit("Checks reverts if extraData is sent on initialization [!CompoundV3ERC4626]", async () => {
+    it("Checks reverts if extraData is sent on initialization [!CompoundV3ERC4626]", async () => {
       if (variant.accessManaged) return; // tagit doens't support double neg
       const {
         MultiStrategyERC4626,
@@ -593,7 +595,7 @@ variants.forEach((variant) => {
       ).to.be.revertedWithCustomError(Strategy, "NoExtraDataAllowed");
     });
 
-    variant.tagit("Checks entering the vault is permissioned, exit isn't [!SwapStableAAVEV3Strategy]", async () => {
+    it("Checks entering the vault is permissioned, exit isn't [!SwapStableAAVEV3Strategy]", async () => {
       const { currency, vault, anon, lp } = await helpers.loadFixture(variant.fixture);
 
       if (variant.accessManaged) {
@@ -642,7 +644,7 @@ variants.forEach((variant) => {
         .withArgs(vault, anon, _A(50));
     });
 
-    variant.tagit("Checks vault accrues compound earnings", async () => {
+    it("Checks vault accrues compound earnings", async () => {
       const { currency, vault, lp, lp2 } = await helpers.loadFixture(variant.fixture);
 
       await expect(vault.connect(lp).mint(_A(1000), lp))
@@ -676,7 +678,7 @@ variants.forEach((variant) => {
       expect(await currency.balanceOf(lp2)).to.closeTo(_A(INITIAL), _A(1));
     });
 
-    variant.tagit("Checks rewards can be harvested [!AAVEV3Strategy] [!SwapStableAAVEV3Strategy]", async () => {
+    it("Checks rewards can be harvested [!AAVEV3Strategy] [!SwapStableAAVEV3Strategy]", async () => {
       const { currency, vault, admin, anon, lp, lp2, strategy, acMgr, roles } = await helpers.loadFixture(
         variant.fixture
       );
@@ -758,7 +760,7 @@ variants.forEach((variant) => {
       expect(await vault.totalSupply()).to.be.equal(_A(3000));
     });
 
-    variant.tagit("Checks it can't disconnect without harvesting rewards [CompoundV3Strategy]", async () => {
+    it("Checks it can't disconnect without harvesting rewards [CompoundV3Strategy]", async () => {
       const { vault, admin, anon, lp, lp2, strategy } = await helpers.loadFixture(variant.fixture);
 
       await expect(vault.connect(lp).mint(_A(1000), lp)).not.to.be.reverted;
@@ -800,35 +802,33 @@ variants.forEach((variant) => {
         .withArgs(strategy, dummyStrategy);
     });
 
-    variant.tagit(
-      "Checks it can disconnect without harvesting rewards if forced [CompoundV3Strategy+AccessManaged]",
-      async () => {
-        const { vault, admin, anon, lp, lp2, strategy, acMgr, roles } = await helpers.loadFixture(variant.fixture);
+    it("Checks it can disconnect without harvesting rewards if forced [CompoundV3Strategy+AccessManaged]", async () => {
+      const { vault, admin, anon, lp, lp2, strategy, acMgr, roles } = await helpers.loadFixture(variant.fixture);
+      console.log("variant.name", variant.name, it.foobar);
 
-        await expect(vault.connect(lp).mint(_A(1000), lp)).not.to.be.reverted;
-        await expect(vault.connect(lp2).mint(_A(2000), lp2)).not.to.be.reverted;
+      await expect(vault.connect(lp).mint(_A(1000), lp)).not.to.be.reverted;
+      await expect(vault.connect(lp2).mint(_A(2000), lp2)).not.to.be.reverted;
 
-        expect(await vault.totalAssets()).to.be.closeTo(_A(3000), MCENT);
-        await acMgr.connect(admin).grantRole(roles.STRATEGY_ADMIN_ROLE, anon, 0);
+      expect(await vault.totalAssets()).to.be.closeTo(_A(3000), MCENT);
+      await acMgr.connect(admin).grantRole(roles.STRATEGY_ADMIN_ROLE, anon, 0);
 
-        await helpers.time.increase(MONTH);
-        const assets = await vault.totalAssets();
-        expect(assets).to.be.closeTo(_A("3028.53"), CENT);
+      await helpers.time.increase(MONTH);
+      const assets = await vault.totalAssets();
+      expect(assets).to.be.closeTo(_A("3028.53"), CENT);
 
-        const DummyInvestStrategy = await ethers.getContractFactory("DummyInvestStrategy");
-        const dummyStrategy = await DummyInvestStrategy.deploy(ADDRESSES.USDC);
+      const DummyInvestStrategy = await ethers.getContractFactory("DummyInvestStrategy");
+      const dummyStrategy = await DummyInvestStrategy.deploy(ADDRESSES.USDC);
 
-        await expect(
-          vault.connect(anon).replaceStrategy(0, dummyStrategy, encodeDummyStorage({}), false)
-        ).to.be.revertedWithCustomError(strategy, "CannotDisconnectWithAssets");
+      await expect(
+        vault.connect(anon).replaceStrategy(0, dummyStrategy, encodeDummyStorage({}), false)
+      ).to.be.revertedWithCustomError(strategy, "CannotDisconnectWithAssets");
 
-        await expect(vault.connect(anon).replaceStrategy(0, dummyStrategy, encodeDummyStorage({}), true))
-          .to.emit(vault, "StrategyChanged")
-          .withArgs(strategy, dummyStrategy);
-      }
-    );
+      await expect(vault.connect(anon).replaceStrategy(0, dummyStrategy, encodeDummyStorage({}), true))
+        .to.emit(vault, "StrategyChanged")
+        .withArgs(strategy, dummyStrategy);
+    });
 
-    variant.tagit("Checks only authorized user can change swap config [!AAVEV3Strategy]", async () => {
+    it("Checks only authorized user can change swap config [!AAVEV3Strategy]", async () => {
       const { currency, vault, admin, anon, lp, swapConfig, strategy, swapLibrary, acMgr, roles } =
         await helpers.loadFixture(variant.fixture);
 
@@ -919,69 +919,63 @@ variants.forEach((variant) => {
       expect(await vault.totalAssets()).to.be.closeTo(assets + _A("10.684546"), CENT);
     });
 
-    variant.tagit(
-      "Checks can't deposit or withdraw when Compound is paused [!AAVEV3Strategy][!SwapStableAAVEV3Strategy]",
-      async () => {
-        const { vault, lp, currency } = await helpers.loadFixture(variant.fixture);
+    it("Checks can't deposit or withdraw when Compound is paused [!AAVEV3Strategy][!SwapStableAAVEV3Strategy]", async () => {
+      const { vault, lp, currency } = await helpers.loadFixture(variant.fixture);
 
-        await helpers.impersonateAccount(ADDRESSES.cUSDCv3_GUARDIAN);
-        await helpers.setBalance(ADDRESSES.cUSDCv3_GUARDIAN, ethers.parseEther("100"));
-        const compGuardian = await ethers.getSigner(ADDRESSES.cUSDCv3_GUARDIAN);
+      await helpers.impersonateAccount(ADDRESSES.cUSDCv3_GUARDIAN);
+      await helpers.setBalance(ADDRESSES.cUSDCv3_GUARDIAN, ethers.parseEther("100"));
+      const compGuardian = await ethers.getSigner(ADDRESSES.cUSDCv3_GUARDIAN);
 
-        const cUSDCv3 = await ethers.getContractAt(CometABI, ADDRESSES.cUSDCv3);
+      const cUSDCv3 = await ethers.getContractAt(CometABI, ADDRESSES.cUSDCv3);
 
-        expect(await vault.maxMint(lp)).to.equal(MaxUint256);
-        expect(await vault.maxDeposit(lp)).to.equal(MaxUint256);
+      expect(await vault.maxMint(lp)).to.equal(MaxUint256);
+      expect(await vault.maxDeposit(lp)).to.equal(MaxUint256);
 
-        // If I pause supply, maxMint / maxDeposit becomes 0 and can't deposit or mint
-        await cUSDCv3.connect(compGuardian).pause(true, false, false, false, false);
+      // If I pause supply, maxMint / maxDeposit becomes 0 and can't deposit or mint
+      await cUSDCv3.connect(compGuardian).pause(true, false, false, false, false);
 
-        expect(await vault.maxMint(lp)).to.equal(0);
-        expect(await vault.maxDeposit(lp)).to.equal(0);
-        await expect(vault.connect(lp).mint(_A(3000), lp)).to.be.revertedWithCustomError(
-          vault,
-          "ERC4626ExceededMaxMint"
-        );
-        await expect(vault.connect(lp).deposit(_A(3000), lp)).to.be.revertedWithCustomError(
-          vault,
-          "ERC4626ExceededMaxDeposit"
-        );
+      expect(await vault.maxMint(lp)).to.equal(0);
+      expect(await vault.maxDeposit(lp)).to.equal(0);
+      await expect(vault.connect(lp).mint(_A(3000), lp)).to.be.revertedWithCustomError(vault, "ERC4626ExceededMaxMint");
+      await expect(vault.connect(lp).deposit(_A(3000), lp)).to.be.revertedWithCustomError(
+        vault,
+        "ERC4626ExceededMaxDeposit"
+      );
 
-        // Then I unpause deposit
-        await cUSDCv3.connect(compGuardian).pause(false, false, false, false, false);
+      // Then I unpause deposit
+      await cUSDCv3.connect(compGuardian).pause(false, false, false, false, false);
 
-        await expect(vault.connect(lp).mint(_A(3000), lp)).not.to.be.reverted;
+      await expect(vault.connect(lp).mint(_A(3000), lp)).not.to.be.reverted;
 
-        expect(await vault.totalAssets()).to.closeTo(_A(3000), MCENT);
-        expect(await vault.maxRedeem(lp)).to.closeTo(_A(3000), MCENT);
-        expect(await vault.maxWithdraw(lp)).to.closeTo(_A(3000), MCENT);
+      expect(await vault.totalAssets()).to.closeTo(_A(3000), MCENT);
+      expect(await vault.maxRedeem(lp)).to.closeTo(_A(3000), MCENT);
+      expect(await vault.maxWithdraw(lp)).to.closeTo(_A(3000), MCENT);
 
-        // If I pause withdraw, maxRedeem / maxWithdraw becomes 0 and can't withdraw or redeem
-        await cUSDCv3.connect(compGuardian).pause(false, false, true, false, false);
+      // If I pause withdraw, maxRedeem / maxWithdraw becomes 0 and can't withdraw or redeem
+      await cUSDCv3.connect(compGuardian).pause(false, false, true, false, false);
 
-        expect(await vault.maxRedeem(lp)).to.equal(0);
-        expect(await vault.maxWithdraw(lp)).to.equal(0);
+      expect(await vault.maxRedeem(lp)).to.equal(0);
+      expect(await vault.maxWithdraw(lp)).to.equal(0);
 
-        await expect(vault.connect(lp).redeem(_A(1000), lp, lp)).to.be.revertedWithCustomError(
-          vault,
-          "ERC4626ExceededMaxRedeem"
-        );
-        await expect(vault.connect(lp).withdraw(_A(1000), lp, lp)).to.be.revertedWithCustomError(
-          vault,
-          "ERC4626ExceededMaxWithdraw"
-        );
+      await expect(vault.connect(lp).redeem(_A(1000), lp, lp)).to.be.revertedWithCustomError(
+        vault,
+        "ERC4626ExceededMaxRedeem"
+      );
+      await expect(vault.connect(lp).withdraw(_A(1000), lp, lp)).to.be.revertedWithCustomError(
+        vault,
+        "ERC4626ExceededMaxWithdraw"
+      );
 
-        // Then I unpause everything
-        await cUSDCv3.connect(compGuardian).pause(false, false, false, false, false);
+      // Then I unpause everything
+      await cUSDCv3.connect(compGuardian).pause(false, false, false, false, false);
 
-        await expect(vault.connect(lp).redeem(_A(3000), lp, lp)).not.to.be.reverted;
-        expect(await vault.totalAssets()).to.closeTo(0, MCENT);
-        // Check LP has more or less the same initial funds
-        expect(await currency.balanceOf(lp)).to.closeTo(_A(INITIAL), MCENT * 10n);
-      }
-    );
+      await expect(vault.connect(lp).redeem(_A(3000), lp, lp)).not.to.be.reverted;
+      expect(await vault.totalAssets()).to.closeTo(0, MCENT);
+      // Check LP has more or less the same initial funds
+      expect(await currency.balanceOf(lp)).to.closeTo(_A(INITIAL), MCENT * 10n);
+    });
 
-    variant.tagit("Checks can't operate when AAVE is paused [AAVEV3Strategy] [SwapStableAAVEV3Strategy]", async () => {
+    it("Checks can't operate when AAVE is paused [AAVEV3Strategy] [SwapStableAAVEV3Strategy]", async () => {
       const { vault, lp, currency } = await helpers.loadFixture(variant.fixture);
 
       await helpers.impersonateAccount(ADDRESSES.AAVEPoolAdmin);
@@ -1048,7 +1042,7 @@ variants.forEach((variant) => {
       expect(await currency.balanceOf(lp)).to.closeTo(_A(INITIAL), _A(5));
     });
 
-    variant.tagit("Checks only authorized can setStrategy [CompoundV3Strategy]", async () => {
+    it("Checks only authorized can setStrategy [CompoundV3Strategy]", async () => {
       const { currency, vault, lp, swapConfig, strategy, anon, admin, CompoundV3InvestStrategy } =
         await helpers.loadFixture(variant.fixture);
 
@@ -1139,7 +1133,7 @@ variants.forEach((variant) => {
       expect(await currency.balanceOf(await dummyStrategy.other())).to.closeTo(_A(3000), CENT);
     });
 
-    variant.tagit("Checks only authorized can setStrategy [AAVEV3Strategy] [SwapStableAAVEV3Strategy]", async () => {
+    it("Checks only authorized can setStrategy [AAVEV3Strategy] [SwapStableAAVEV3Strategy]", async () => {
       const {
         currency,
         vault,
@@ -1249,7 +1243,7 @@ variants.forEach((variant) => {
       expect(await currency.balanceOf(await dummyStrategy.other())).to.closeTo(_A(3000), _A(5));
     });
 
-    variant.tagit("Checks methods can't be called directly [!CompoundV3ERC4626]", async () => {
+    it("Checks methods can't be called directly [!CompoundV3ERC4626]", async () => {
       const { strategy } = await helpers.loadFixture(variant.fixture);
       await expect(strategy.getFunction("connect")(ethers.toUtf8Bytes(""))).to.be.revertedWithCustomError(
         strategy,
