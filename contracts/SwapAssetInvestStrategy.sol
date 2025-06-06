@@ -102,6 +102,10 @@ abstract contract SwapAssetInvestStrategy is IInvestStrategy {
    */
   function investAssetPrice() public view virtual returns (uint256);
 
+  function sellInvestAssetPrice() internal view returns (uint256) {
+    return Math.mulDiv(WAD, WAD, investAssetPrice()); // 1/investAssetPrice() - Units: investAsset/asset
+  }
+
   /**
    * @dev Converts a given amount of investAssets into assets, considering the difference in decimals and the
    *      maxSlippage accepted
@@ -133,12 +137,8 @@ abstract contract SwapAssetInvestStrategy is IInvestStrategy {
    */
   function withdraw(uint256 assets) public virtual override onlyDelegCall {
     if (assets == 0) return;
-    SwapLibrary.SwapConfig memory swapConfig = abi.decode(
-      StorageSlot.getBytesSlot(storageSlot).value,
-      (SwapLibrary.SwapConfig)
-    );
-    // swapLibrary expects a price expressed in tokenOut/tokenIn
-    uint256 price = Math.mulDiv(WAD, WAD, investAssetPrice()); // 1/investAssetPrice() - Units: investAsset/asset
+    SwapLibrary.SwapConfig memory swapConfig = _getSwapConfigSelf();
+    uint256 price = sellInvestAssetPrice();
     if (assets >= _convertAssets(_investAsset.balanceOf(address(this)), address(this))) {
       // When the intention is to withdraw all the strategy assets, I convert all the _investAsset.
       // This might result in more assets, but it's fine, better than leaving extra _investAsset in the strategy
@@ -156,12 +156,8 @@ abstract contract SwapAssetInvestStrategy is IInvestStrategy {
    */
   function deposit(uint256 assets) public virtual override onlyDelegCall {
     if (assets == 0) return;
-    SwapLibrary.SwapConfig memory swapConfig = abi.decode(
-      StorageSlot.getBytesSlot(storageSlot).value,
-      (SwapLibrary.SwapConfig)
-    );
     // swapLibrary expects a price expressed in tokenOut/tokenIn - OK since investAssetPrice() is in _asset/_investAsset
-    swapConfig.exactInput(address(_asset), address(_investAsset), assets, investAssetPrice());
+    _getSwapConfigSelf().exactInput(address(_asset), address(_investAsset), assets, investAssetPrice());
   }
 
   function _setSwapConfig(SwapLibrary.SwapConfig memory oldSwapConfig, bytes memory newSwapConfigAsBytes) internal {
@@ -173,7 +169,7 @@ abstract contract SwapAssetInvestStrategy is IInvestStrategy {
   }
 
   /// @inheritdoc IInvestStrategy
-  function forwardEntryPoint(uint8 method, bytes memory params) external onlyDelegCall returns (bytes memory) {
+  function forwardEntryPoint(uint8 method, bytes memory params) public virtual onlyDelegCall returns (bytes memory) {
     ForwardMethods checkedMethod = ForwardMethods(method);
     if (checkedMethod == ForwardMethods.setSwapConfig) {
       // The change of the swap config, that involves both the DEX to use and the maxSlippage is a critical operation
@@ -192,6 +188,10 @@ abstract contract SwapAssetInvestStrategy is IInvestStrategy {
   function _getSwapConfig(address contract_) internal view returns (SwapLibrary.SwapConfig memory) {
     bytes memory swapConfigAsBytes = IExposeStorage(contract_).getBytesSlot(storageSlot);
     return abi.decode(swapConfigAsBytes, (SwapLibrary.SwapConfig));
+  }
+
+  function _getSwapConfigSelf() internal view returns (SwapLibrary.SwapConfig memory) {
+    return abi.decode(StorageSlot.getBytesSlot(storageSlot).value, (SwapLibrary.SwapConfig));
   }
 
   /**
