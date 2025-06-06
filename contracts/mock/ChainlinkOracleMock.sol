@@ -3,7 +3,7 @@ pragma solidity ^0.8.0;
 
 import {AggregatorV3Interface} from "../dependencies/chainlink/AggregatorV3Interface.sol";
 
-contract ChainlinkOracle is AggregatorV3Interface {
+contract ChainlinkOracleMock is AggregatorV3Interface {
   uint8 public decimals;
   string public description;
   uint256 public version;
@@ -33,6 +33,7 @@ contract ChainlinkOracle is AggregatorV3Interface {
     uint80 answeredInRound
   ) external {
     _rounds[roundId] = Round(roundId, answer, startedAt, updatedAt, answeredInRound);
+    if (roundId > lastRoundId) lastRoundId = roundId;
   }
 
   function getRoundData(
