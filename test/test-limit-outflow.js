@@ -1,8 +1,14 @@
 const { expect } = require("chai");
-const { amountFunction } = require("@ensuro/utils/js/utils");
+const {
+  amountFunction,
+  makeAllViewsPublic,
+  mergeFragments,
+  setupAMRole,
+  tagitVariant,
+} = require("@ensuro/utils/js/utils");
 const { WEEK, DAY } = require("@ensuro/utils/js/constants");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
-const { encodeDummyStorage, tagit, makeAllViewsPublic, mergeFragments, setupAMRole } = require("./utils");
+const { encodeDummyStorage } = require("./utils");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
@@ -51,7 +57,6 @@ async function setUp() {
 const variants = [
   {
     name: "AMProxy+OutflowLimitedAMMSV",
-    tagit: tagit,
     accessManaged: true,
     accessError: "revertedWithAMError",
     fixture: async () => {
@@ -160,6 +165,9 @@ const variants = [
 ];
 
 variants.forEach((variant) => {
+  const it = (testDescription, test) => tagitVariant(variant, false, testDescription, test);
+  it.only = (testDescription, test) => tagitVariant(variant, true, testDescription, test);
+
   describe(`${variant.name} contract tests`, function () {
     it("Initializes the vault correctly", async () => {
       const { deployVault, currency, strategies } = await helpers.loadFixture(variant.fixture);
