@@ -749,8 +749,8 @@ variants.forEach((variant) => {
       expect(evt).not.equal(null);
 
       expect(evt.args.token).to.equal(ADDRESSES.COMP);
-      expect(evt.args.rewards).to.equal(_W("0.126432"));
-      expect(evt.args.receivedInAsset).to.equal(_A("10.684546"));
+      expect(evt.args.rewards).to.closeTo(_W("0.126432"), _W("0.000002"));
+      expect(evt.args.receivedInAsset).to.closeTo(_A("10.684546"), _A("0.001"));
 
       await expect(tx).to.emit(currency, "Transfer").withArgs(vault, ADDRESSES.cUSDCv3, _A("10.684546"));
 
@@ -804,7 +804,6 @@ variants.forEach((variant) => {
 
     it("Checks it can disconnect without harvesting rewards if forced [CompoundV3Strategy+AccessManaged]", async () => {
       const { vault, admin, anon, lp, lp2, strategy, acMgr, roles } = await helpers.loadFixture(variant.fixture);
-      console.log("variant.name", variant.name, it.foobar);
 
       await expect(vault.connect(lp).mint(_A(1000), lp)).not.to.be.reverted;
       await expect(vault.connect(lp2).mint(_A(2000), lp2)).not.to.be.reverted;

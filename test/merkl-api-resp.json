@@ -1,0 +1,121 @@
+[
+   {
+      "chain" : {
+         "Explorer" : [
+            {
+               "chainId" : 137,
+               "id" : "17928672915163412988",
+               "type" : "ETHERSCAN",
+               "url" : "https://polygonscan.com"
+            }
+         ],
+         "icon" : "https://raw.githubusercontent.com/AngleProtocol/angle-token-list/main/src/assets/chains/polygon.svg",
+         "id" : 137,
+         "name" : "Polygon"
+      },
+      "rewards" : [
+         {
+            "amount" : "2798648000469071645990",
+            "breakdowns" : [
+               {
+                  "amount" : "1388900985422614344310",
+                  "campaignId" : "0x093a42a87acfcff4bf481e7a8027999223e2d87c5a21c17bd4254f006fdc45da",
+                  "claimed" : "0",
+                  "pending" : "86739837455515742358",
+                  "reason" : "ERC20_0x781FB7F6d845E3bE129289833b04d43Aa8558c42"
+               },
+               {
+                  "amount" : "1409747015046457301680",
+                  "campaignId" : "0x28acc0ade884ae478ba4a9fe61124b5180886b5931e603e16d5e7e1570e6abdc",
+                  "claimed" : "0",
+                  "pending" : "0",
+                  "reason" : "ERC20_0x781FB7F6d845E3bE129289833b04d43Aa8558c42"
+               }
+            ],
+            "claimed" : "0",
+            "pending" : "86739837455515742358",
+            "proofs" : [
+               "0xa085c7b2d4ca61be540edba27491edebfa0c295ca832c10004e9caa2c6b659d4",
+               "0x069216c85a684ecdd3d6267c109d125ea07236da8b3826440857bf244cc1bcb5",
+               "0xe61345e784f4ed0d2144f32bda81fe9a0530d7b8bf4a704575bfd0060faba3d0",
+               "0xe5392458beb5de78dcfd2f35412b29a5ec5fd44b70b0d81272a7776a33739585",
+               "0x72ce63f77e07aa20f9336a7d0d942492b625456316a6231815aff1f18fea3362",
+               "0xcc4ca097bc69129e9feb1c60cb01c794e146a4ac9c25ce05786f31d71b02e121",
+               "0x59be23e6fe61ce3ebb3430f626fcad338577e8edcd2176df340fba2e8294dd21",
+               "0x6a9fcd1229f3adf3122668562cdfbebf5e7fedffd5e9c63d9c90975fdb01f399",
+               "0xf91b5ea41a0fdf7092a3abc2a9821262b006bb5dee0879ce1704a3b090038563",
+               "0x4bb0b45aea8a6dc4f55c041df33c9b1071db5dd0f7b4f87cc3b5faaef88df2cb",
+               "0x359dc6b9b0251f3dfe13fab32062a59059238e466a6da7e66d333a95c9e925ca",
+               "0x2a194dceb4018c74f86363bca06dca9f4977146c854cf953aaf343bacf62e4fd",
+               "0x3338073fe8ed58b55ccc88424b5511274adca37e0f7ba32a240d2b8a71a87abb",
+               "0xdfb73f582d4432db6abd5eb0092f23c85375fe395eaea2ee9ca3478e9886be45",
+               "0xa424fb475837870e783255b21cceabf386ac00d4170187818a9ebbe97c888c41",
+               "0xaa37984683cbd2c61af0372bd10f34436a2adb25555884d6aa58f54d74788eb4",
+               "0x2dbb5aada1b50333a0b0755654f849486f42e614f8df8b3b198ae9e4af17072b",
+               "0x6c48e22d94cf6a57e817805e3aff6532af596cf702ec567cfbff8c0337ea97d3",
+               "0x43fc6cea7e309e513d6360cc0b781d49b1b6474414a4b69101a2ebdeeca7b620"
+            ],
+            "recipient" : "0x14F6DFEE761455247C6bf2b2b052a1F6245dD6FB",
+            "root" : "0x094e446706b0dbe2254899aadf7c097db240075f7491090dc93b40cf25d4b4ff",
+            "token" : {
+               "address" : "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270",
+               "chainId" : 137,
+               "decimals" : 18,
+               "price" : 0.22052,
+               "symbol" : "WPOL"
+            }
+         },
+         {
+            "amount" : "14099859066042647896",
+            "breakdowns" : [
+               {
+                  "amount" : "6498424995566120496",
+                  "campaignId" : "0xeb4c0cba480dee8cadf1f14d6030c6bd92fb1cb76adb481ecfc3333f4ddb28a0",
+                  "claimed" : "0",
+                  "pending" : "405840541369299023",
+                  "reason" : "ERC20_0x781FB7F6d845E3bE129289833b04d43Aa8558c42"
+               },
+               {
+                  "amount" : "7601434070476527400",
+                  "campaignId" : "0xff73b15e4d812abe95e5ef064be42993222c191363671dfc0a0bd3bc2508b8ae",
+                  "claimed" : "0",
+                  "pending" : "0",
+                  "reason" : "ERC20_0x781FB7F6d845E3bE129289833b04d43Aa8558c42"
+               }
+            ],
+            "claimed" : "0",
+            "pending" : "405840541369299023",
+            "proofs" : [
+               "0xbcfa1614cdc7d8a54b5fa837d04ebc285fbc7ef8661d13ab6e1f8f5d917a20ba",
+               "0x45d98b79bedc17cec3b2587aa9143a5f7cfc565207843cc0a84edcce95731952",
+               "0x450847e61212d1ec89a2e9d11d7a202bf4ff4f679979a411db8ca6b0ef4c1134",
+               "0xdcf9c1c869a96d1a91b0aa04d9d4647c81ae6839764eb8f699538587e0c25fd2",
+               "0xc9ffe94255391e1dfdfd3dafd21102eb05a90430d51359046586ad9ded79ac1d",
+               "0x2141a96147fc11556712e9fc6bdf695ac1715d88f6573c15cbf01544dd6c538a",
+               "0x488e0891d662e5aa73be2fdf2360d9c2d8d3cc8861c1d2480f80a15747ac42a1",
+               "0xce2a20d6c2e93f08411c9c1b2cdecd4429aecc822d2aff9ea83aae1fc0ba7c8d",
+               "0xa3c494ab103a45070a31a24b4fcdeac9c241e1301bb264bae6cae4bc399f3b37",
+               "0x9c87b6b50794903bab0365bc7cd399639975820da8163aee26ea981720f8e80f",
+               "0xcf7b4ee92c998e5aef70a8a0ffb54769c789421d2b40923e756c1a97a8e6a39f",
+               "0xe81d0e6da7a6b964bdbdb973310354eda8e30f0c46253c9eb087fd16c6c058ed",
+               "0x6cf23682746a5f17f2a75ad4870aef23371d9827a3eb08f46b9891f8b9a3900e",
+               "0x57dc719557dbf63099b31f11a50c24a4ab6d416e733c17ab9221023bd24269c3",
+               "0xd68d73dfd02c90d2748b02bf7f56a845bbd1bb5ad3da037f5bbc6a2014bb93db",
+               "0x73a2b7b1bfd169c9babb2007a188a7e2c35bea8e6d08da20106fa91ecf607f9c",
+               "0xbb9b2de999fa7774e1401f4bdd9affd1d1efd23173ca2a760ef4dc7c68714662",
+               "0x6c48e22d94cf6a57e817805e3aff6532af596cf702ec567cfbff8c0337ea97d3",
+               "0x43fc6cea7e309e513d6360cc0b781d49b1b6474414a4b69101a2ebdeeca7b620"
+            ],
+            "recipient" : "0x14F6DFEE761455247C6bf2b2b052a1F6245dD6FB",
+            "root" : "0x094e446706b0dbe2254899aadf7c097db240075f7491090dc93b40cf25d4b4ff",
+            "token" : {
+               "address" : "0x8505b9d2254A7Ae468c0E9dd10Ccea3A837aef5c",
+               "chainId" : 137,
+               "decimals" : 18,
+               "price" : 57.58,
+               "symbol" : "COMP"
+            }
+         }
+      ]
+   }
+]

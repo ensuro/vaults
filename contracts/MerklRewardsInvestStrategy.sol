@@ -2,10 +2,13 @@
 pragma solidity ^0.8.0;
 
 import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
+import {ERC1967Utils} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Utils.sol";
+import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {SwapLibrary} from "@ensuro/swaplibrary/contracts/SwapLibrary.sol";
 import {IInvestStrategy} from "./interfaces/IInvestStrategy.sol";
 import {ChainlinkSwapAssetInvestStrategy} from "./ChainlinkSwapAssetInvestStrategy.sol";
 import {AggregatorV3Interface} from "./dependencies/chainlink/AggregatorV3Interface.sol";
+import {MSVBase} from "./MSVBase.sol";
 
 interface IMerklDistributor {
   function claim(
@@ -27,6 +30,7 @@ interface IMerklDistributor {
  * @author Ensuro
  */
 contract MerklRewardsInvestStrategy is ChainlinkSwapAssetInvestStrategy {
+  using Address for address;
   using SwapLibrary for SwapLibrary.SwapConfig;
 
   IMerklDistributor public immutable distributor;
@@ -37,6 +41,9 @@ contract MerklRewardsInvestStrategy is ChainlinkSwapAssetInvestStrategy {
     claimAndSwapRewards,
     swapRewards
   }
+
+  event RewardsClaimed(address indexed token, uint256 amount);
+  event RewardsSwapped(address indexed token, uint256 amountIn, uint256 amountOut);
 
   /**
    * @dev Constructor of the strategy
@@ -73,22 +80,28 @@ contract MerklRewardsInvestStrategy is ChainlinkSwapAssetInvestStrategy {
     users[0] = address(this);
     tokens[0] = investAsset(address(this));
     distributor.claim(users, tokens, amounts, proofs);
+    emit RewardsClaimed(tokens[0], amounts[0]);
   }
 
   function _swapRewards(uint256 amount) internal {
-    _getSwapConfigSelf().exactInput(
+    if (amount == type(uint256).max) amount = _investAsset.balanceOf(address(this));
+    uint256 amountOut = _getSwapConfigSelf().exactInput(
       address(_investAsset),
       address(_asset),
-      amount == type(uint256).max ? _investAsset.balanceOf(address(this)) : amount,
+      amount,
       sellInvestAssetPrice()
     );
+
+    // Reinjects the rewards in the vault calling `depositToStrategies` on the implementation contract
+    ERC1967Utils.getImplementation().functionDelegateCall(abi.encodeCall(MSVBase.depositToStrategies, amountOut));
+    emit RewardsSwapped(investAsset(address(this)), amount, amountOut);
   }
 
   /// @inheritdoc IInvestStrategy
   function forwardEntryPoint(
     uint8 method,
     bytes memory params
-  ) public virtual override onlyDelegCall returns (bytes memory) {
+  ) public virtual override onlyDelegCall returns (bytes memory result) {
     MerklForwardMethods checkedMethod = MerklForwardMethods(method);
     if (checkedMethod == MerklForwardMethods.claimRewards) {
       _claimRewards(params);

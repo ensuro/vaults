@@ -1,8 +1,8 @@
 const { expect } = require("chai");
-const { amountFunction, _W, getRole, getTransactionEvent, tagitVariant } = require("@ensuro/utils/js/utils");
+const { amountFunction, _W, getRole, tagitVariant } = require("@ensuro/utils/js/utils");
 const { DAY } = require("@ensuro/utils/js/constants");
 const { buildUniswapConfig } = require("@ensuro/swaplibrary/js/utils");
-const { encodeSwapConfig, encodeDummyStorage } = require("./utils");
+const { encodeSwapConfig } = require("./utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const { anyUint } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 const hre = require("hardhat");
@@ -16,10 +16,6 @@ const _A = amountFunction(CURRENCY_DECIMALS);
 const INITIAL = 10000;
 const NAME = "Single Strategy Vault";
 const SYMB = "SSV";
-
-const SwapStableInvestStrategyMethods = {
-  setSwapConfig: 0,
-};
 
 async function setUp() {
   const [, lp, lp2, anon, guardian, admin] = await ethers.getSigners();
@@ -374,7 +370,7 @@ variants.forEach((variant) => {
       await assetOracle.addRound(3, oldAssetPrice * 2n, now, now - 2 * DAY, 0);
       await expect(strategy.investAssetPrice())
         .to.be.revertedWithCustomError(strategy, "PriceTooOld")
-        .withArgs(now - 2 * DAY);
+        .withArgs(anyUint, now - 2 * DAY);
     });
   });
 });

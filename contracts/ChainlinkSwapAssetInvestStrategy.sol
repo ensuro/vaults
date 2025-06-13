@@ -24,7 +24,7 @@ contract ChainlinkSwapAssetInvestStrategy is SwapAssetInvestStrategy {
   AggregatorV3Interface public immutable investAssetOracle;
   uint256 public immutable priceTolerance;
 
-  error PriceTooOld(uint256 updatedAt);
+  error PriceTooOld(uint256 minUpdateAt, uint256 updatedAt);
   error InvalidPrice(int256 chainlinkAnswer);
 
   /**
@@ -54,7 +54,7 @@ contract ChainlinkSwapAssetInvestStrategy is SwapAssetInvestStrategy {
   function _getOraclePrice(AggregatorV3Interface oracle) internal view returns (uint256) {
     if (address(oracle) == address(0)) return WAD;
     (, int256 answer, , uint256 updatedAt, ) = oracle.latestRoundData();
-    require(updatedAt > block.timestamp - priceTolerance, PriceTooOld(updatedAt));
+    require(updatedAt > block.timestamp - priceTolerance, PriceTooOld(block.timestamp - priceTolerance, updatedAt));
     require(answer > 0, InvalidPrice(answer));
     return uint256(answer) * 10 ** (18 - oracle.decimals());
   }
