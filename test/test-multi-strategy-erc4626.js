@@ -1,7 +1,7 @@
 const { expect } = require("chai");
-const { _A, getRole } = require("@ensuro/utils/js/utils");
+const { _A, getRole, tagitVariant, makeAllViewsPublic, setupAMRole } = require("@ensuro/utils/js/utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
-const { encodeDummyStorage, dummyStorage, tagit, makeAllViewsPublic, setupAMRole } = require("./utils");
+const { encodeDummyStorage, dummyStorage } = require("./utils");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const { deploy: ozUpgradesDeploy } = require("@openzeppelin/hardhat-upgrades/dist/utils");
@@ -48,7 +48,6 @@ async function setUp() {
 const variants = [
   {
     name: "MultiStrategyERC4626",
-    tagit: tagit,
     accessError: "revertedWithACError",
     fixture: async () => {
       const ret = await setUp();
@@ -107,7 +106,6 @@ const variants = [
   },
   {
     name: "AMProxy+AccessManagedMSV",
-    tagit: tagit,
     accessManaged: true,
     accessError: "revertedWithAMError",
     fixture: async () => {
@@ -211,7 +209,6 @@ const variants = [
   },
   {
     name: "AMProxy+OutflowLimitedAMMSV",
-    tagit: tagit,
     accessManaged: true,
     accessError: "revertedWithAMError",
     fixture: async () => {
@@ -343,8 +340,11 @@ async function invariantChecks(vault) {
 }
 
 variants.forEach((variant) => {
+  const it = (testDescription, test) => tagitVariant(variant, false, testDescription, test);
+  it.only = (testDescription, test) => tagitVariant(variant, true, testDescription, test);
+
   describe(`${variant.name} contract tests`, function () {
-    variant.tagit("Checks vault constructs with disabled initializer [MultiStrategyERC4626]", async () => {
+    it("Checks vault constructs with disabled initializer [MultiStrategyERC4626]", async () => {
       const { MultiStrategyERC4626, adminAddr, currency, strategies } = await helpers.loadFixture(variant.fixture);
       const newVault = await MultiStrategyERC4626.deploy();
       await expect(newVault.deploymentTransaction()).to.emit(newVault, "Initialized");
@@ -362,7 +362,7 @@ variants.forEach((variant) => {
       ).to.be.revertedWithCustomError(MultiStrategyERC4626, "InvalidInitialization");
     });
 
-    variant.tagit("Checks vault constructs with disabled initializer [!MultiStrategyERC4626]", async () => {
+    it("Checks vault constructs with disabled initializer [!MultiStrategyERC4626]", async () => {
       const { AccessManagedMSV, OutflowLimitedAMMSV, currency, strategies } = await helpers.loadFixture(
         variant.fixture
       );
@@ -382,7 +382,7 @@ variants.forEach((variant) => {
       ).to.be.revertedWithCustomError(factory, "InvalidInitialization");
     });
 
-    variant.tagit("Initializes the vault correctly", async () => {
+    it("Initializes the vault correctly", async () => {
       const { deployVault, currency, strategies } = await helpers.loadFixture(variant.fixture);
       const vault = await deployVault(1);
       expect(await vault.name()).to.equal(NAME);
@@ -396,7 +396,7 @@ variants.forEach((variant) => {
       expect(await vault.totalAssets()).to.equal(0);
     });
 
-    variant.tagit("Initialization fails if strategy connect fails", async () => {
+    it("Initialization fails if strategy connect fails", async () => {
       const { deployVault, DummyInvestStrategy } = await helpers.loadFixture(variant.fixture);
       let vault = deployVault(1, [encodeDummyStorage({ failConnect: true })]);
       await expect(vault).to.be.revertedWithCustomError(DummyInvestStrategy, "Fail").withArgs("connect");
@@ -412,7 +412,7 @@ variants.forEach((variant) => {
       }
     });
 
-    variant.tagit("It checks calls to forwardToStrategy require permission [MultiStrategyERC4626]", async () => {
+    it("It checks calls to forwardToStrategy require permission [MultiStrategyERC4626]", async () => {
       const { deployVault, strategies, anon, grantRole } = await helpers.loadFixture(variant.fixture);
       const vault = await deployVault(3);
       await expect(vault.connect(anon).forwardToStrategy(4, 0, encodeDummyStorage({}))).to.be.revertedWithACError(
@@ -468,7 +468,7 @@ variants.forEach((variant) => {
       }
     });
 
-    variant.tagit("It checks calls to forwardToStrategy require permission [!MultiStrategyERC4626]", async () => {
+    it("It checks calls to forwardToStrategy require permission [!MultiStrategyERC4626]", async () => {
       const { deployVault, strategies, anon, grantRole, acMgr, admin } = await helpers.loadFixture(variant.fixture);
       const vault = await deployVault(3);
       await expect(vault.connect(anon).forwardToStrategy(4, 0, encodeDummyStorage({}))).to.be.revertedWithAMError(
@@ -528,7 +528,7 @@ variants.forEach((variant) => {
       }
     });
 
-    variant.tagit("It sets and reads the right value from strategy storage", async () => {
+    it("It sets and reads the right value from strategy storage", async () => {
       const { deployVault, strategies, grantForwardToStrategy, anon } = await helpers.loadFixture(variant.fixture);
       const vault = (await deployVault(3)).connect(anon);
       await grantForwardToStrategy(vault, 4, 0, anon);
@@ -566,7 +566,7 @@ variants.forEach((variant) => {
       }
     });
 
-    variant.tagit("It fails when initialized with wrong parameters", async () => {
+    it("It fails when initialized with wrong parameters", async () => {
       const { strategies, MultiStrategyERC4626, deployVault } = await helpers.loadFixture(variant.fixture);
       // Sending 0 strategies fails
       await expect(deployVault(0)).to.be.revertedWithCustomError(MultiStrategyERC4626, "InvalidStrategiesLength");
@@ -626,7 +626,7 @@ variants.forEach((variant) => {
       await invariantChecks(vault);
     });
 
-    variant.tagit("It respects the order of deposit and withdrawal queues", async () => {
+    it("It respects the order of deposit and withdrawal queues", async () => {
       const { deployVault, lp, lp2, currency, grantRole, grantForwardToStrategy, strategies } =
         await helpers.loadFixture(variant.fixture);
       const vault = await deployVault(4, undefined, [3, 2, 1, 0], [2, 0, 3, 1]);
@@ -694,7 +694,7 @@ variants.forEach((variant) => {
       expect(await vault.totalAssets()).to.be.equal(_A(0));
     });
 
-    variant.tagit("It respects the order of deposit and authorized user can rebalance", async () => {
+    it("It respects the order of deposit and authorized user can rebalance", async () => {
       const { deployVault, lp, lp2, currency, grantRole, grantForwardToStrategy, strategies } =
         await helpers.loadFixture(variant.fixture);
       const vault = await deployVault(4, undefined, [3, 2, 1, 0], [2, 0, 3, 1]);
@@ -746,7 +746,7 @@ variants.forEach((variant) => {
       await expect(vault.connect(lp2).rebalance(3, 0, MaxUint256)).not.to.emit(vault, "Rebalance");
     });
 
-    variant.tagit("It can addStrategy and is added at the bottom of the queues", async () => {
+    it("It can addStrategy and is added at the bottom of the queues", async () => {
       const { deployVault, lp, lp2, currency, grantRole, strategies } = await helpers.loadFixture(variant.fixture);
       const vault = await deployVault(3, undefined, [1, 0, 2], [2, 0, 1]);
       await currency.connect(lp).approve(vault, MaxUint256);
@@ -791,7 +791,7 @@ variants.forEach((variant) => {
       await invariantChecks(vault);
     });
 
-    variant.tagit("It can add up to 32 strategies", async () => {
+    it("It can add up to 32 strategies", async () => {
       const { deployVault, lp2, DummyInvestStrategy, currency, grantRole, strategies } = await helpers.loadFixture(
         variant.fixture
       );
@@ -821,7 +821,7 @@ variants.forEach((variant) => {
       await invariantChecks(vault);
     });
 
-    variant.tagit("It can removeStrategy only if doesn't have funds unless forced", async () => {
+    it("It can removeStrategy only if doesn't have funds unless forced", async () => {
       const { deployVault, lp, lp2, currency, grantRole, grantForwardToStrategy, strategies } =
         await helpers.loadFixture(variant.fixture);
       const vault = await deployVault(3, undefined, [1, 0, 2], [2, 0, 1]);
@@ -859,7 +859,7 @@ variants.forEach((variant) => {
       await invariantChecks(vault);
     });
 
-    variant.tagit("It can removeStrategy only if doesn't have funds", async () => {
+    it("It can removeStrategy only if doesn't have funds", async () => {
       const { deployVault, lp, lp2, currency, grantRole, grantForwardToStrategy, strategies } =
         await helpers.loadFixture(variant.fixture);
       const vault = await deployVault(3, undefined, [1, 0, 2], [2, 0, 1]);
@@ -921,7 +921,7 @@ variants.forEach((variant) => {
       );
     });
 
-    variant.tagit("It can removeStrategy in different order", async () => {
+    it("It can removeStrategy in different order", async () => {
       const { deployVault, lp2, grantRole, strategies } = await helpers.loadFixture(variant.fixture);
       const vault = await deployVault(3, undefined, [1, 0, 2], [2, 0, 1]);
 
@@ -950,7 +950,7 @@ variants.forEach((variant) => {
       );
     });
 
-    variant.tagit("It can change the depositQueue if authorized", async () => {
+    it("It can change the depositQueue if authorized", async () => {
       const { deployVault, lp2, grantRole } = await helpers.loadFixture(variant.fixture);
       const vault = await deployVault(3, undefined, [1, 0, 2], [2, 0, 1]);
       expect(await vault.depositQueue()).to.deep.equal([2, 1, 3].concat(Array(MAX_STRATEGIES - 3).fill(0)));
@@ -991,7 +991,7 @@ variants.forEach((variant) => {
       );
     });
 
-    variant.tagit("It can change the withdrawQueue if authorized", async () => {
+    it("It can change the withdrawQueue if authorized", async () => {
       const { deployVault, lp2, grantRole } = await helpers.loadFixture(variant.fixture);
       const vault = await deployVault(3, undefined, [1, 0, 2], [2, 0, 1]);
       expect(await vault.withdrawQueue()).to.deep.equal([3, 1, 2].concat(Array(MAX_STRATEGIES - 3).fill(0)));
@@ -1032,7 +1032,7 @@ variants.forEach((variant) => {
       );
     });
 
-    variant.tagit("It can replaceStrategy if authorized", async () => {
+    it("It can replaceStrategy if authorized", async () => {
       const { deployVault, lp, lp2, currency, grantRole, grantForwardToStrategy, strategies } =
         await helpers.loadFixture(variant.fixture);
       const vault = await deployVault(3, undefined, [1, 0, 2], [2, 0, 1]);
@@ -1109,7 +1109,7 @@ variants.forEach((variant) => {
         .withArgs(strategies[6], strategies[6]);
     });
 
-    variant.tagit("Initialization fails if any strategy and vault have different assets", async () => {
+    it("Initialization fails if any strategy and vault have different assets", async () => {
       const { MultiStrategyERC4626, DummyInvestStrategy, adminAddr, currency } = await helpers.loadFixture(
         variant.fixture
       );
@@ -1141,7 +1141,7 @@ variants.forEach((variant) => {
       ).to.be.revertedWithCustomError(MultiStrategyERC4626, "InvalidStrategyAsset");
     });
 
-    variant.tagit("Fails to add strategy to vault if assets are different", async () => {
+    it("Fails to add strategy to vault if assets are different", async () => {
       const { deployVault, DummyInvestStrategy, grantRole, admin, MultiStrategyERC4626 } = await helpers.loadFixture(
         variant.fixture
       );
@@ -1162,7 +1162,7 @@ variants.forEach((variant) => {
       ).to.be.revertedWithCustomError(MultiStrategyERC4626, "InvalidStrategyAsset");
     });
 
-    variant.tagit("Fails to replace strategy to vault if assets are different", async () => {
+    it("Fails to replace strategy to vault if assets are different", async () => {
       // Obtener instancias necesarias para el test (contract, roles, etc.)
       const { deployVault, DummyInvestStrategy, grantRole, admin, MultiStrategyERC4626 } = await helpers.loadFixture(
         variant.fixture
