@@ -13,8 +13,6 @@ import {InvestStrategyClient} from "./InvestStrategyClient.sol";
  * @author Ensuro
  */
 contract IdleInvestStrategy is IInvestStrategy {
-  uint256 internal constant WAD = 1e18;
-
   address internal immutable __self = address(this);
   bytes32 public immutable storageSlot = InvestStrategyClient.makeStorageSlot(this);
 
@@ -23,11 +21,6 @@ contract IdleInvestStrategy is IInvestStrategy {
   error CanBeCalledOnlyThroughDelegateCall();
   error CannotDisconnectWithAssets();
   error NoExtraDataAllowed();
-  error InvalidAsset();
-
-  enum ForwardMethods {
-    setSwapConfig
-  }
 
   modifier onlyDelegCall() {
     if (address(this) == __self) revert CanBeCalledOnlyThroughDelegateCall();
@@ -40,7 +33,6 @@ contract IdleInvestStrategy is IInvestStrategy {
    * @param asset_ The address of the underlying token used for accounting, depositing, and withdrawing.
    */
   constructor(IERC20Metadata asset_) {
-    require(asset_.decimals() <= 18, InvalidAsset());
     _asset = asset_;
   }
 
