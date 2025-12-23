@@ -531,7 +531,6 @@ variants.push({
 variants.forEach((variant) => {
   const it = (testDescription, test) => tagitVariant(variant, false, testDescription, test);
   it.only = (testDescription, test) => tagitVariant(variant, true, testDescription, test);
-  it.foobar = 123;
 
   describe(`${variant.name} contract tests`, function () {
     before(async () => {

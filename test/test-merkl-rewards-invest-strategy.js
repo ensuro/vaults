@@ -5,12 +5,11 @@ const { WEEK } = require("@ensuro/utils/js/constants");
 const { buildUniswapConfig } = require("@ensuro/swaplibrary/js/utils");
 const { encodeSwapConfig } = require("./utils");
 const { initForkCurrency, amScheduleAndExecuteBatch, setupChain } = require("@ensuro/utils/js/test-utils");
-const { anyUint } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
 const { ethers } = hre;
-const { MaxUint256, ZeroAddress } = hre.ethers;
+const { MaxUint256 } = hre.ethers;
 
 const CURRENCY_DECIMALS = 6;
 const _A = amountFunction(CURRENCY_DECIMALS);
@@ -98,9 +97,8 @@ async function fetchRewards(userAddress) {
     const rewardData = await resp.json();
     fs.writeFileSync("./test/merkl-api-resp-2.json", JSON.stringify(rewardData));
     return rewardData;
-  } else {
-    return JSON.parse(fs.readFileSync("./test/merkl-api-resp.json"));
   }
+  return JSON.parse(fs.readFileSync("./test/merkl-api-resp.json"));
 }
 
 describe("MerklRewardsInvestStrategy contract tests", function () {
