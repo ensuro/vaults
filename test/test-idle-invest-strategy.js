@@ -118,14 +118,14 @@ async function setUp() {
 }
 
 async function setUpIdleOnly() {
-  const ret = await helpers.loadFixture(setUp);
+  const ret = await setUp();
   const strategy = await ret.IdleInvestStrategy.deploy(ret.USDC);
   const vault = await ret.setupVault(ret.USDC, [strategy], [ethers.toUtf8Bytes("")], [0], [0]);
   return { ...ret, vault, strategy };
 }
 
 async function setUpMultiStrategies() {
-  const ret = await helpers.loadFixture(setUp);
+  const ret = await setUp();
   const strategy = await ret.IdleInvestStrategy.deploy(ret.USDC);
   const erc4626strategy = await ret.ERC4626InvestStrategy.deploy(ret.investVault);
   const vault = await ret.setupVault(
@@ -140,7 +140,7 @@ async function setUpMultiStrategies() {
 
 describe("IdleInvestStrategy contract tests", function () {
   it("Initializes the vault correctly", async () => {
-    const { USDC, vault, strategy } = await setUpIdleOnly();
+    const { USDC, vault, strategy } = await helpers.loadFixture(setUpIdleOnly);
     expect(await vault.name()).to.equal(NAME);
     expect(await vault.symbol()).to.equal(SYMB);
     expect(await vault.asset()).to.equal(USDC);
@@ -150,7 +150,7 @@ describe("IdleInvestStrategy contract tests", function () {
   });
 
   it("Deposit and withdrawal works", async () => {
-    const { USDC, vault, lp, strategy } = await setUpIdleOnly();
+    const { USDC, vault, lp, strategy } = await helpers.loadFixture(setUpIdleOnly);
     const lpBalance = await USDC.balanceOf(lp);
     await vault.connect(lp).deposit(_A(100), lp);
     expect(await vault.totalAssets()).to.equal(_A(100));
@@ -166,7 +166,7 @@ describe("IdleInvestStrategy contract tests", function () {
   });
 
   it("Can be combined with ERC4626InvestStrategy", async () => {
-    const { USDC, vault, lp, strategy, admin } = await setUpMultiStrategies();
+    const { USDC, vault, lp, strategy, admin } = await helpers.loadFixture(setUpMultiStrategies);
 
     const lpBalance = await USDC.balanceOf(lp);
     await vault.connect(lp).deposit(_A(100), lp);
@@ -185,7 +185,7 @@ describe("IdleInvestStrategy contract tests", function () {
   });
 
   it("Can be removed", async () => {
-    const { USDC, vault, lp, strategy, admin } = await setUpMultiStrategies();
+    const { USDC, vault, lp, strategy, admin } = await helpers.loadFixture(setUpMultiStrategies);
 
     const lpBalance = await USDC.balanceOf(lp);
     await vault.connect(lp).deposit(_A(100), lp);
@@ -209,7 +209,7 @@ describe("IdleInvestStrategy contract tests", function () {
   });
 
   it("Checks methods can't be called directly", async () => {
-    const { strategy } = await setUpIdleOnly();
+    const { strategy } = await helpers.loadFixture(setUpIdleOnly);
 
     await expect(strategy.getFunction("connect")(ethers.toUtf8Bytes(""))).to.be.revertedWithCustomError(
       strategy,
@@ -232,7 +232,7 @@ describe("IdleInvestStrategy contract tests", function () {
   });
 
   it("Checks forwardToStrategy fails with any input", async () => {
-    const { vault, admin } = await setUpIdleOnly();
+    const { vault, admin } = await helpers.loadFixture(setUpIdleOnly);
     await expect(vault.connect(admin).forwardToStrategy(0, 123, ethers.toUtf8Bytes(""))).to.be.reverted;
   });
 });

@@ -1,9 +1,9 @@
-name: Ensuro SmartContract Tests
+name: Smart Contract Tests
 on: [push]
 
 jobs:
   tests:
-    name: Ensuro Tests
+    name: Smart Contract Tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
 

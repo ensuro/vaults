@@ -84,7 +84,7 @@ async function setUp() {
 }
 
 async function setUpCommon() {
-  const ret = await helpers.loadFixture(setUp);
+  const ret = await setUp();
   const strategy = await ret.ERC4626InvestStrategy.deploy(ret.investVault);
   const vault = await ret.setupVault(ret.USDC, strategy);
   return { ...ret, vault, strategy };
@@ -92,7 +92,7 @@ async function setUpCommon() {
 
 describe("ERC4626InvestStrategy contract tests", function () {
   it("Initializes the vault correctly", async () => {
-    const { USDC, investVault, vault, strategy } = await setUpCommon();
+    const { USDC, investVault, vault, strategy } = await helpers.loadFixture(setUpCommon);
     expect(await vault.name()).to.equal(NAME);
     expect(await vault.symbol()).to.equal(SYMB);
     expect(await vault.strategy()).to.equal(strategy);
@@ -103,7 +103,7 @@ describe("ERC4626InvestStrategy contract tests", function () {
   });
 
   it("Deposit and accounting works", async () => {
-    const { USDC, investVault, vault, lp } = await setUpCommon();
+    const { USDC, investVault, vault, lp } = await helpers.loadFixture(setUpCommon);
     await vault.connect(lp).deposit(_A(100), lp);
     expect(await vault.totalAssets()).to.equal(_A(100));
     expect(await investVault.convertToAssets(await investVault.balanceOf(vault))).to.equal(_A(100));
@@ -119,7 +119,7 @@ describe("ERC4626InvestStrategy contract tests", function () {
   });
 
   it("Withdraws and reduces the assets", async () => {
-    const { USDC, investVault, vault, lp } = await setUpCommon();
+    const { USDC, investVault, vault, lp } = await helpers.loadFixture(setUpCommon);
     await vault.connect(lp).deposit(_A(100), lp);
     expect(await vault.totalAssets()).to.equal(_A(100));
 
@@ -135,7 +135,7 @@ describe("ERC4626InvestStrategy contract tests", function () {
   });
 
   it("Checks maxWithdraw and maxDeposit reflect the limits of the investVault", async () => {
-    const { investVault, vault, lp, strategy } = await setUpCommon();
+    const { investVault, vault, lp, strategy } = await helpers.loadFixture(setUpCommon);
 
     await investVault.setOverride(OverrideOption.deposit, _A(10));
 
@@ -166,7 +166,7 @@ describe("ERC4626InvestStrategy contract tests", function () {
   });
 
   it("Checks methods can't be called directly", async () => {
-    const { strategy } = await setUpCommon();
+    const { strategy } = await helpers.loadFixture(setUpCommon);
 
     await expect(strategy.getFunction("connect")(ethers.toUtf8Bytes(""))).to.be.revertedWithCustomError(
       strategy,
@@ -189,7 +189,7 @@ describe("ERC4626InvestStrategy contract tests", function () {
   });
 
   it("Checks forwardToStrategy fails with any input", async () => {
-    const { vault } = await setUpCommon();
+    const { vault } = await helpers.loadFixture(setUpCommon);
     await expect(vault.forwardToStrategy(123, ethers.toUtf8Bytes(""))).to.be.reverted;
   });
 
@@ -224,7 +224,8 @@ describe("ERC4626InvestStrategy contract tests", function () {
   });
 
   it("Checks the strategy can't be disconnected with assets unless forced", async () => {
-    const { USDC, investVault, vault, lp, DummyInvestStrategy, admin, strategy } = await setUpCommon();
+    const { USDC, investVault, vault, lp, DummyInvestStrategy, admin, strategy } =
+      await helpers.loadFixture(setUpCommon);
     await vault.connect(lp).deposit(_A(100), lp);
 
     const dummy = await DummyInvestStrategy.deploy(USDC);
@@ -261,7 +262,8 @@ describe("ERC4626InvestStrategy contract tests", function () {
   });
 
   it("Checks the strategy can't be disconnected with SHARES in the investVault unless forced", async () => {
-    const { USDC, investVault, vault, lp, DummyInvestStrategy, admin, strategy } = await setUpCommon();
+    const { USDC, investVault, vault, lp, DummyInvestStrategy, admin, strategy } =
+      await helpers.loadFixture(setUpCommon);
     await vault.connect(lp).deposit(_A(100), lp);
 
     const dummy = await DummyInvestStrategy.deploy(USDC);
