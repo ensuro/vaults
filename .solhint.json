@@ -3,6 +3,11 @@
   "rules": {
     "prettier/prettier": "error",
     "avoid-throw": "off",
+    "use-natspec": "off",
+    "gas-indexed-events": "off",
+    "gas-strict-inequalities": "off",
+    "gas-calldata-parameters": "off",
+    "gas-increment-by-one": "off",
     "avoid-suicide": "error",
     "avoid-sha3": "warn",
     "compiler-version": ["error", "^0.8.0"],
