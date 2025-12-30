@@ -9,13 +9,13 @@ hretry.installWrapper();
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
   solidity: {
-    version: "0.8.28",
+    version: "0.8.30",
     settings: {
       optimizer: {
         enabled: true,
         runs: 200,
       },
-      evmVersion: "cancun",
+      evmVersion: "prague",
     },
   },
   networks: {
@@ -31,6 +31,7 @@ module.exports = {
   dependencyCompiler: {
     paths: [
       "@ensuro/utils/contracts/TestCurrency.sol",
+      "@ensuro/utils/contracts/TestCurrencyAC.sol",
       "@ensuro/utils/contracts/TestERC4626.sol",
       "@ensuro/swaplibrary/contracts/mocks/SwapRouterMock.sol",
       "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol",

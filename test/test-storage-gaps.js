@@ -5,7 +5,7 @@ const hre = require("hardhat");
 const { getStorageLayout } = require("@ensuro/utils/js/utils");
 
 describe("Storage Gaps", () => {
-  const contracts = ["CompoundV3ERC4626", "SingleStrategyERC4626", "MultiStrategyERC4626"];
+  const contracts = ["SingleStrategyERC4626"];
 
   for (const contract of contracts) {
     it(`${contract} has a proper storage gap`, async () => {

@@ -64,7 +64,6 @@ contract AccessManagedMSV is MSVBase, UUPSUpgradeable, ERC4626Upgradeable {
     uint8[] memory depositQueue_,
     uint8[] memory withdrawQueue_
   ) internal onlyInitializing {
-    __UUPSUpgradeable_init();
     __ERC4626_init(asset_);
     __ERC20_init(name_, symbol_);
     __MSVBase_init_unchained(strategies_, initStrategyDatas, depositQueue_, withdrawQueue_);

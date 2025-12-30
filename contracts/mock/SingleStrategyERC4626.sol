@@ -7,7 +7,9 @@ import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {StorageSlot} from "@openzeppelin/contracts/utils/StorageSlot.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
-import {PermissionedERC4626} from "../PermissionedERC4626.sol";
+import {ERC4626Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
+import {ERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IInvestStrategy} from "../interfaces/IInvestStrategy.sol";
 import {IExposeStorage} from "../interfaces/IExposeStorage.sol";
 import {InvestStrategyClient} from "../InvestStrategyClient.sol";
@@ -28,7 +30,7 @@ import {InvestStrategyClient} from "../InvestStrategyClient.sol";
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
-contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
+contract SingleStrategyERC4626 is ERC4626Upgradeable, UUPSUpgradeable, IExposeStorage {
   using SafeERC20 for IERC20Metadata;
   using Address for address;
   using InvestStrategyClient for IInvestStrategy;
@@ -75,12 +77,13 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
   function __SingleStrategyERC4626_init(
     string memory name_,
     string memory symbol_,
-    address admin_,
+    address,
     IERC20 asset_,
     IInvestStrategy strategy_,
     bytes memory initStrategyData
   ) internal onlyInitializing {
-    __PermissionedERC4626_init(name_, symbol_, admin_, asset_);
+    __ERC20_init(name_, symbol_);
+    __ERC4626_init(asset_);
     __SingleStrategyERC4626_init_unchained(strategy_, initStrategyData);
   }
 
@@ -180,11 +183,7 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
    *              this value in `false`. Only use `true` if you know what you are doing and trying to replace a faulty
    *              strategy.
    */
-  function setStrategy(
-    IInvestStrategy newStrategy,
-    bytes memory initStrategyData,
-    bool force
-  ) external onlyRole(SET_STRATEGY_ROLE) {
+  function setStrategy(IInvestStrategy newStrategy, bytes memory initStrategyData, bool force) external {
     InvestStrategyClient.strategyChange(_strategy, newStrategy, initStrategyData, IERC20Metadata(asset()), force);
     _strategy = newStrategy;
   }
@@ -195,6 +194,8 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
   function strategy() external view returns (IInvestStrategy) {
     return _strategy;
   }
+
+  function _authorizeUpgrade(address newImplementation) internal override {}
 
   /**
    * @dev This empty reserved space is put in place to allow future versions to add new
