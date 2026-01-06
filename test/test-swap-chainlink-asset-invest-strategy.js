@@ -1,5 +1,5 @@
 const { expect } = require("chai");
-const { amountFunction, _W, getRole, tagitVariant } = require("@ensuro/utils/js/utils");
+const { amountFunction, _W, tagitVariant } = require("@ensuro/utils/js/utils");
 const { DAY } = require("@ensuro/utils/js/constants");
 const { buildUniswapConfig } = require("@ensuro/swaplibrary/js/utils");
 const { encodeSwapConfig } = require("./utils");
@@ -99,8 +99,6 @@ async function setUp() {
     // Whitelist LPs
     await asset.connect(lp).approve(vault, MaxUint256);
     await asset.connect(lp2).approve(vault, MaxUint256);
-    await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
-    await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp2);
     return vault;
   }
 
@@ -178,7 +176,9 @@ const variants = [
 ];
 
 variants.forEach((variant) => {
-  const it = (testDescription, test) => tagitVariant(variant, false, testDescription, test);
+  function it(testDescription, test) {
+    return tagitVariant(variant, false, testDescription, test);
+  }
   it.only = (testDescription, test) => tagitVariant(variant, true, testDescription, test);
 
   describe(`ChainlinkSwapAssetInvestStrategy contract tests ${variant.name}`, function () {

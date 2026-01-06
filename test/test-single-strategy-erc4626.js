@@ -61,14 +61,13 @@ async function setUp() {
 
 describe("SingleStrategyERC4626 contract tests", function () {
   it("Initializes the vault correctly", async () => {
-    const { vault, strategy, currency, admin } = await helpers.loadFixture(setUp);
+    const { vault, strategy, currency } = await helpers.loadFixture(setUp);
 
     expect(await vault.name()).to.equal(NAME);
     expect(await vault.symbol()).to.equal(SYMB);
     expect(await vault.strategy()).to.equal(strategy);
     expect(await vault.asset()).to.equal(currency);
     expect(await vault.totalAssets()).to.equal(0);
-    expect(await vault.owner()).to.equal(admin.address);
   });
 
   it("Initialization fails if strategy connect fails", async () => {
@@ -144,8 +143,8 @@ describe("SingleStrategyERC4626 contract tests", function () {
     const { vault, strategy, admin, anon } = await helpers.loadFixture(setUp);
     await expect(vault.forwardToStrategy(0, encodeDummyStorage({ failDisconnect: true }))).not.to.be.reverted;
     await expect(vault.connect(anon).setStrategy(strategy, encodeDummyStorage({}), false))
-      .to.be.revertedWithCustomError(vault, "OwnableUnauthorizedAccount")
-      .withArgs(anon.address);
+      .to.be.revertedWithCustomError(strategy, "Fail")
+      .withArgs("disconnect");
     await expect(vault.connect(admin).setStrategy(strategy, encodeDummyStorage({}), false))
       .to.be.revertedWithCustomError(strategy, "Fail")
       .withArgs("disconnect");
@@ -197,16 +196,5 @@ describe("SingleStrategyERC4626 contract tests", function () {
     await expect(
       vault.connect(admin).setStrategy(differentStrategy, encodeDummyStorage({}), false)
     ).to.be.revertedWithCustomError(SingleStrategyERC4626, "InvalidStrategyAsset");
-  });
-
-  it("Checks only Owner can upgrade", async () => {
-    const { vault, admin, guardian, SingleStrategyERC4626 } = await helpers.loadFixture(setUp);
-    const newImpl = await SingleStrategyERC4626.deploy();
-
-    await expect(vault.connect(guardian).upgradeToAndCall(newImpl, "0x"))
-      .to.be.revertedWithCustomError(vault, "OwnableUnauthorizedAccount")
-      .withArgs(guardian.address);
-
-    await expect(vault.connect(admin).upgradeToAndCall(newImpl, "0x")).to.emit(vault, "Upgraded");
   });
 });

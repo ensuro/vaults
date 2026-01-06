@@ -1,5 +1,5 @@
 const { expect } = require("chai");
-const { _A, getRole, tagitVariant, makeAllViewsPublic, setupAMRole } = require("@ensuro/utils/js/utils");
+const { _A, tagitVariant, makeAllViewsPublic, setupAMRole } = require("@ensuro/utils/js/utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const { encodeDummyStorage, dummyStorage } = require("./utils");
 const hre = require("hardhat");
@@ -29,11 +29,9 @@ async function setUp() {
       .fill(0)
       .map(() => DummyInvestStrategy.deploy(currency))
   );
-  const MultiStrategyERC4626 = await ethers.getContractFactory("MultiStrategyERC4626");
 
   return {
     currency,
-    MultiStrategyERC4626,
     DummyInvestStrategy,
     strategies,
     adminAddr,
@@ -46,64 +44,6 @@ async function setUp() {
 }
 
 const variants = [
-  {
-    name: "MultiStrategyERC4626",
-    accessError: "revertedWithACError",
-    fixture: async () => {
-      const ret = await setUp();
-      const { strategies, MultiStrategyERC4626, adminAddr, currency, admin } = ret;
-      async function deployVault(strategies_, initStrategyDatas, depositQueue, withdrawQueue) {
-        if (strategies_ === undefined) {
-          strategies_ = strategies;
-        } else if (typeof strategies_ == "number") {
-          strategies_ = strategies.slice(0, strategies_);
-        }
-        if (initStrategyDatas === undefined) {
-          initStrategyDatas = strategies_.map(() => encodeDummyStorage({}));
-        }
-        if (depositQueue === undefined) {
-          depositQueue = strategies_.map((_, i) => i);
-        }
-        if (withdrawQueue === undefined) {
-          withdrawQueue = strategies_.map((_, i) => i);
-        }
-        return hre.upgrades.deployProxy(
-          MultiStrategyERC4626,
-          [
-            NAME,
-            SYMB,
-            adminAddr,
-            await ethers.resolveAddress(currency),
-            await Promise.all(strategies_.map(ethers.resolveAddress)),
-            initStrategyDatas,
-            depositQueue,
-            withdrawQueue,
-          ],
-          {
-            kind: "uups",
-            unsafeAllow: ["delegatecall"],
-          }
-        );
-      }
-
-      async function grantRole(vault, role, user) {
-        await vault.connect(admin).grantRole(getRole(role), user);
-      }
-
-      async function grantForwardToStrategy(vault, strategyIndex, method, user) {
-        await vault.connect(admin).grantRole(getRole("FORWARD_TO_STRATEGY_ROLE"), user);
-        const specificRole = await vault.getForwardToStrategyRole(strategyIndex, method);
-        await vault.connect(admin).grantRole(specificRole, user);
-      }
-
-      return {
-        deployVault,
-        grantRole,
-        grantForwardToStrategy,
-        ...ret,
-      };
-    },
-  },
   {
     name: "AMProxy+AccessManagedMSV",
     accessManaged: true,
@@ -154,7 +94,8 @@ const variants = [
             kind: "uups",
             unsafeAllow: ["delegatecall"],
             proxyFactory: AccessManagedProxy,
-            deployFunction: async (hre, opts, factory, ...args) => ozUpgradesDeploy(hre, opts, factory, ...args, acMgr),
+            deployFunction: async (_hre, opts, factory, ...args) =>
+              ozUpgradesDeploy(hre, opts, factory, ...args, acMgr),
           }
         );
         await makeAllViewsPublic(acMgr.connect(admin), vault);
@@ -257,7 +198,8 @@ const variants = [
             kind: "uups",
             unsafeAllow: ["delegatecall"],
             proxyFactory: AccessManagedProxy,
-            deployFunction: async (hre, opts, factory, ...args) => ozUpgradesDeploy(hre, opts, factory, ...args, acMgr),
+            deployFunction: async (_hre, opts, factory, ...args) =>
+              ozUpgradesDeploy(hre, opts, factory, ...args, acMgr),
           }
         );
         await makeAllViewsPublic(acMgr.connect(admin), vault);
@@ -340,29 +282,13 @@ async function invariantChecks(vault) {
 }
 
 variants.forEach((variant) => {
-  const it = (testDescription, test) => tagitVariant(variant, false, testDescription, test);
+  function it(testDescription, test) {
+    return tagitVariant(variant, false, testDescription, test);
+  }
   it.only = (testDescription, test) => tagitVariant(variant, true, testDescription, test);
 
   describe(`${variant.name} contract tests`, function () {
-    it("Checks vault constructs with disabled initializer [MultiStrategyERC4626]", async () => {
-      const { MultiStrategyERC4626, adminAddr, currency, strategies } = await helpers.loadFixture(variant.fixture);
-      const newVault = await MultiStrategyERC4626.deploy();
-      await expect(newVault.deploymentTransaction()).to.emit(newVault, "Initialized");
-      await expect(
-        newVault.initialize(
-          "foo",
-          "bar",
-          adminAddr,
-          await ethers.resolveAddress(currency),
-          [strategies[0]],
-          [encodeDummyStorage({})],
-          [0],
-          [0]
-        )
-      ).to.be.revertedWithCustomError(MultiStrategyERC4626, "InvalidInitialization");
-    });
-
-    it("Checks vault constructs with disabled initializer [!MultiStrategyERC4626]", async () => {
+    it("Checks vault constructs with disabled initializer", async () => {
       const { AccessManagedMSV, OutflowLimitedAMMSV, currency, strategies } = await helpers.loadFixture(
         variant.fixture
       );
@@ -412,63 +338,7 @@ variants.forEach((variant) => {
       }
     });
 
-    it("It checks calls to forwardToStrategy require permission [MultiStrategyERC4626]", async () => {
-      const { deployVault, strategies, anon, grantRole } = await helpers.loadFixture(variant.fixture);
-      const vault = await deployVault(3);
-      await expect(vault.connect(anon).forwardToStrategy(4, 0, encodeDummyStorage({}))).to.be.revertedWithACError(
-        vault,
-        anon,
-        "FORWARD_TO_STRATEGY_ROLE"
-      );
-
-      await grantRole(vault, "FORWARD_TO_STRATEGY_ROLE", anon);
-      let specificRole = await vault.getForwardToStrategyRole(4, 0);
-      await expect(vault.connect(anon).forwardToStrategy(4, 0, encodeDummyStorage({}))).to.be.revertedWithACError(
-        vault,
-        anon,
-        specificRole
-      );
-      await grantRole(vault, specificRole, anon);
-
-      await expect(vault.connect(anon).forwardToStrategy(4, 0, encodeDummyStorage({}))).to.be.revertedWithCustomError(
-        vault,
-        "InvalidStrategy"
-      );
-
-      for (let i = 0; i < 3; i++) {
-        let strategy = strategies[i];
-        let failConfig = {};
-        expect(await strategy.getFail(vault)).to.be.deep.equal(dummyStorage(failConfig));
-
-        failConfig = { failDisconnect: true };
-        specificRole = await vault.getForwardToStrategyRole(i, 0);
-        await expect(
-          vault.connect(anon).forwardToStrategy(i, 0, encodeDummyStorage(failConfig))
-        ).to.be.revertedWithACError(vault, anon, specificRole);
-        await grantRole(vault, specificRole, anon);
-        await expect(vault.connect(anon).forwardToStrategy(i, 0, encodeDummyStorage(failConfig))).not.to.be.reverted;
-        expect(await strategy.getFail(vault)).to.be.deep.equal(dummyStorage(failConfig));
-
-        failConfig = { failConnect: true };
-        await expect(vault.connect(anon).forwardToStrategy(i, 0, encodeDummyStorage(failConfig))).not.to.be.reverted;
-        expect(await strategy.getFail(vault)).to.be.deep.equal(dummyStorage(failConfig));
-
-        await expect(vault.connect(anon).forwardToStrategy(i, 0, encodeDummyStorage({}))).not.to.be.reverted;
-        expect(await strategy.getFail(vault)).to.be.deep.equal(dummyStorage({}));
-
-        failConfig = { failWithdraw: true };
-        await expect(vault.connect(anon).forwardToStrategy(i, 0, encodeDummyStorage(failConfig))).not.to.be.reverted;
-        expect(await strategy.getFail(vault)).to.be.deep.equal(dummyStorage(failConfig));
-
-        expect(await vault.getBytesSlot(await strategy.storageSlot())).to.be.equal(encodeDummyStorage(failConfig));
-        await expect(vault.getBytesSlot(ethers.zeroPadValue(ethers.toQuantity(123), 32))).to.be.revertedWithCustomError(
-          vault,
-          "OnlyStrategyStorageExposed"
-        );
-      }
-    });
-
-    it("It checks calls to forwardToStrategy require permission [!MultiStrategyERC4626]", async () => {
+    it("It checks calls to forwardToStrategy require permission", async () => {
       const { deployVault, strategies, anon, grantRole, acMgr, admin } = await helpers.loadFixture(variant.fixture);
       const vault = await deployVault(3);
       await expect(vault.connect(anon).forwardToStrategy(4, 0, encodeDummyStorage({}))).to.be.revertedWithAMError(
@@ -567,46 +437,49 @@ variants.forEach((variant) => {
     });
 
     it("It fails when initialized with wrong parameters", async () => {
-      const { strategies, MultiStrategyERC4626, deployVault } = await helpers.loadFixture(variant.fixture);
+      const { strategies, deployVault, AccessManagedMSV, OutflowLimitedAMMSV } = await helpers.loadFixture(
+        variant.fixture
+      );
+      const ContractFactory = AccessManagedMSV || OutflowLimitedAMMSV;
       // Sending 0 strategies fails
-      await expect(deployVault(0)).to.be.revertedWithCustomError(MultiStrategyERC4626, "InvalidStrategiesLength");
+      await expect(deployVault(0)).to.be.revertedWithCustomError(ContractFactory, "InvalidStrategiesLength");
       // Sending 33 strategies fail
       await expect(deployVault(strategies.concat([strategies[0]]))).to.be.revertedWithCustomError(
-        MultiStrategyERC4626,
+        ContractFactory,
         "InvalidStrategiesLength"
       );
       // Sending different length arrays fail
       await expect(deployVault(1, Array(2).fill(encodeDummyStorage({})))).to.be.revertedWithCustomError(
-        MultiStrategyERC4626,
+        ContractFactory,
         "InvalidStrategiesLength"
       );
       await expect(deployVault(2, undefined, [0])).to.be.revertedWithCustomError(
-        MultiStrategyERC4626,
+        ContractFactory,
         "InvalidStrategiesLength"
       );
       await expect(deployVault(3, undefined, undefined, [1, 0])).to.be.revertedWithCustomError(
-        MultiStrategyERC4626,
+        ContractFactory,
         "InvalidStrategiesLength"
       );
-      await expect(deployVault([ZeroAddress])).to.be.revertedWithCustomError(MultiStrategyERC4626, "InvalidStrategy");
+      await expect(deployVault([ZeroAddress])).to.be.revertedWithCustomError(ContractFactory, "InvalidStrategy");
       await expect(deployVault([strategies[0], strategies[1], strategies[0]])).to.be.revertedWithCustomError(
-        MultiStrategyERC4626,
+        ContractFactory,
         "DuplicatedStrategy"
       );
       await expect(deployVault(2, undefined, [3, 2])).to.be.revertedWithCustomError(
-        MultiStrategyERC4626,
+        ContractFactory,
         "InvalidStrategyInDepositQueue"
       );
       await expect(deployVault(2, undefined, undefined, [3, 2])).to.be.revertedWithCustomError(
-        MultiStrategyERC4626,
+        ContractFactory,
         "InvalidStrategyInWithdrawQueue"
       );
       await expect(deployVault(2, undefined, [1, 1])).to.be.revertedWithCustomError(
-        MultiStrategyERC4626,
+        ContractFactory,
         "InvalidStrategyInDepositQueue"
       );
       await expect(deployVault(2, undefined, undefined, [1, 1])).to.be.revertedWithCustomError(
-        MultiStrategyERC4626,
+        ContractFactory,
         "InvalidStrategyInWithdrawQueue"
       );
       // Successful initialization emits DepositQueueChanged, WithdrawQueueChanged
@@ -822,8 +695,7 @@ variants.forEach((variant) => {
     });
 
     it("It can removeStrategy only if doesn't have funds unless forced", async () => {
-      const { deployVault, lp, lp2, currency, grantRole, grantForwardToStrategy, strategies } =
-        await helpers.loadFixture(variant.fixture);
+      const { deployVault, lp, lp2, currency, grantRole, strategies } = await helpers.loadFixture(variant.fixture);
       const vault = await deployVault(3, undefined, [1, 0, 2], [2, 0, 1]);
       await currency.connect(lp).approve(vault, MaxUint256);
       await grantRole(vault, "LP_ROLE", lp);
@@ -1110,9 +982,8 @@ variants.forEach((variant) => {
     });
 
     it("Initialization fails if any strategy and vault have different assets", async () => {
-      const { MultiStrategyERC4626, DummyInvestStrategy, adminAddr, currency } = await helpers.loadFixture(
-        variant.fixture
-      );
+      const { DummyInvestStrategy, adminAddr, currency, AccessManagedMSV, OutflowLimitedAMMSV, acMgr } =
+        await helpers.loadFixture(variant.fixture);
 
       const differentCurrency = await initCurrency(
         { name: "Different USDC", symbol: "DUSDC", decimals: 6, initial_supply: _A(50000), extraArgs: [adminAddr] },
@@ -1120,13 +991,15 @@ variants.forEach((variant) => {
       );
 
       const differentStrategy = await DummyInvestStrategy.deploy(differentCurrency);
+      const ContractFactory = AccessManagedMSV || OutflowLimitedAMMSV;
+      const AccessManagedProxy = await ethers.getContractFactory("AccessManagedProxy");
+
       await expect(
         hre.upgrades.deployProxy(
-          MultiStrategyERC4626,
+          ContractFactory,
           [
             NAME,
             SYMB,
-            adminAddr,
             await ethers.resolveAddress(currency),
             [await ethers.resolveAddress(differentStrategy)],
             [encodeDummyStorage({})],
@@ -1136,17 +1009,20 @@ variants.forEach((variant) => {
           {
             kind: "uups",
             unsafeAllow: ["delegatecall"],
+            proxyFactory: AccessManagedProxy,
+            deployFunction: async (_hre, opts, factory, ...args) =>
+              ozUpgradesDeploy(hre, opts, factory, ...args, acMgr),
           }
         )
-      ).to.be.revertedWithCustomError(MultiStrategyERC4626, "InvalidStrategyAsset");
+      ).to.be.revertedWithCustomError(ContractFactory, "InvalidStrategyAsset");
     });
 
     it("Fails to add strategy to vault if assets are different", async () => {
-      const { deployVault, DummyInvestStrategy, grantRole, admin, MultiStrategyERC4626 } = await helpers.loadFixture(
-        variant.fixture
-      );
+      const { deployVault, DummyInvestStrategy, grantRole, admin, AccessManagedMSV, OutflowLimitedAMMSV } =
+        await helpers.loadFixture(variant.fixture);
 
       const vault = await deployVault(3, undefined, [0, 1, 2], [0, 1, 2]);
+      const ContractFactory = AccessManagedMSV || OutflowLimitedAMMSV;
 
       const differentCurrency = await initCurrency(
         { name: "Different USDC", symbol: "DUSDC", decimals: 6, initial_supply: _A(50000), extraArgs: [admin] },
@@ -1159,16 +1035,16 @@ variants.forEach((variant) => {
 
       await expect(
         vault.connect(admin).addStrategy(differentStrategy, encodeDummyStorage({}))
-      ).to.be.revertedWithCustomError(MultiStrategyERC4626, "InvalidStrategyAsset");
+      ).to.be.revertedWithCustomError(ContractFactory, "InvalidStrategyAsset");
     });
 
     it("Fails to replace strategy to vault if assets are different", async () => {
       // Obtener instancias necesarias para el test (contract, roles, etc.)
-      const { deployVault, DummyInvestStrategy, grantRole, admin, MultiStrategyERC4626 } = await helpers.loadFixture(
-        variant.fixture
-      );
+      const { deployVault, DummyInvestStrategy, grantRole, admin, AccessManagedMSV, OutflowLimitedAMMSV } =
+        await helpers.loadFixture(variant.fixture);
 
       const vault = await deployVault(3, undefined, [0, 1, 2], [0, 1, 2]);
+      const ContractFactory = AccessManagedMSV || OutflowLimitedAMMSV;
 
       const differentCurrency = await initCurrency(
         { name: "Different USDC", symbol: "DUSDC", decimals: 6, initial_supply: _A(50000), extraArgs: [admin] },
@@ -1181,7 +1057,7 @@ variants.forEach((variant) => {
 
       await expect(
         vault.connect(admin).replaceStrategy(0, differentStrategy, encodeDummyStorage({}), false)
-      ).to.be.revertedWithCustomError(MultiStrategyERC4626, "InvalidStrategyAsset");
+      ).to.be.revertedWithCustomError(ContractFactory, "InvalidStrategyAsset");
     });
   });
 });

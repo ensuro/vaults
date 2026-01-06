@@ -62,8 +62,6 @@ async function setUp() {
     // Whitelist LPs
     await asset.connect(lp).approve(vault, MaxUint256);
     await asset.connect(lp2).approve(vault, MaxUint256);
-    await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
-    await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp2);
     return vault;
   }
 
@@ -230,8 +228,6 @@ describe("ERC4626InvestStrategy contract tests", function () {
 
     const dummy = await DummyInvestStrategy.deploy(USDC);
 
-    await vault.connect(admin).grantRole(getRole("SET_STRATEGY_ROLE"), admin);
-
     expect(await investVault.totalAssets()).to.equal(_A(100));
     expect(await strategy.totalAssets(vault)).to.equal(_A(100));
 
@@ -267,8 +263,6 @@ describe("ERC4626InvestStrategy contract tests", function () {
     await vault.connect(lp).deposit(_A(100), lp);
 
     const dummy = await DummyInvestStrategy.deploy(USDC);
-
-    await vault.connect(admin).grantRole(getRole("SET_STRATEGY_ROLE"), admin);
 
     await investVault.discreteEarning(-_A(100));
     expect(await vault.totalAssets()).to.equal(_A(0));

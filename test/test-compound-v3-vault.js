@@ -198,137 +198,13 @@ const variants = [
       expect(action).to.be.revertedWithACError(contract, user, role),
     getSwapConfig: async (vault) => vault.getSwapConfig(),
     setSwapConfig: async (vault, swapConfig) => vault.setSwapConfig(swapConfig),
-    grantAccess: async (hre, operation, vault, admin, user) =>
+    grantAccess: async (_hre, operation, vault, admin, user) =>
       grantRole(
         hre,
         vault.connect(admin),
         operation == CompoundV3StrategyMethods.harvestRewards ? "HARVEST_ROLE" : "SWAP_ADMIN_ROLE",
         user
       ),
-  },
-  {
-    name: "CompoundV3Strategy",
-    cToken: ADDRESSES.cUSDCv3,
-    fixture: async () => {
-      const { currency, swapLibrary, adminAddr, swapConfig, admin, lp, lp2, guardian, anon } = await setUp();
-      const CompoundV3InvestStrategy = await ethers.getContractFactory("CompoundV3InvestStrategy", {
-        libraries: {
-          SwapLibrary: await ethers.resolveAddress(swapLibrary),
-        },
-      });
-      const strategy = await CompoundV3InvestStrategy.deploy(ADDRESSES.cUSDCv3, ADDRESSES.REWARDS);
-      const MultiStrategyERC4626 = await ethers.getContractFactory("MultiStrategyERC4626");
-      const vault = await hre.upgrades.deployProxy(
-        MultiStrategyERC4626,
-        [
-          NAME,
-          SYMB,
-          adminAddr,
-          ADDRESSES.USDC,
-          [await ethers.resolveAddress(strategy)],
-          [encodeSwapConfig(swapConfig)],
-          [0],
-          [0],
-        ],
-        {
-          kind: "uups",
-          unsafeAllow: ["delegatecall"],
-        }
-      );
-      await currency.connect(lp).approve(vault, MaxUint256);
-      await currency.connect(lp2).approve(vault, MaxUint256);
-      await grantRole(hre, vault.connect(admin), "LP_ROLE", lp);
-      await grantRole(hre, vault.connect(admin), "LP_ROLE", lp2);
-
-      return {
-        currency,
-        MultiStrategyERC4626,
-        CompoundV3InvestStrategy,
-        swapConfig,
-        vault,
-        strategy,
-        adminAddr,
-        lp,
-        lp2,
-        anon,
-        guardian,
-        admin,
-        swapLibrary,
-      };
-    },
-    harvestRewards: async (vault, amount) =>
-      vault.forwardToStrategy(
-        0,
-        CompoundV3StrategyMethods.harvestRewards,
-        ethers.AbiCoder.defaultAbiCoder().encode(["uint256"], [amount])
-      ),
-    accessControlCheck: async (action, user, role, contract) => {
-      if (role === "SWAP_ADMIN_ROLE") {
-        role = await contract.getForwardToStrategyRole(0, CompoundV3StrategyMethods.setSwapConfig);
-      }
-      return expect(action).to.be.revertedWithACError(contract, user, role);
-    },
-    getSwapConfig: async (vault, strategy) => strategy.getSwapConfig(vault),
-    setSwapConfig: async (vault, swapConfig) =>
-      vault.forwardToStrategy(0, CompoundV3StrategyMethods.setSwapConfig, encodeSwapConfig(swapConfig)),
-    grantAccess: async (hre, operation, vault, admin, user) => {
-      await grantRole(hre, vault.connect(admin), "FORWARD_TO_STRATEGY_ROLE", user);
-      const specificRole = await vault.getForwardToStrategyRole(0, operation);
-      await grantRole(hre, vault.connect(admin), specificRole, user);
-    },
-  },
-  {
-    name: "AAVEV3Strategy",
-    cToken: ADDRESSES.aUSDCv3,
-    supplyToken: ADDRESSES.USDC,
-    fixture: async () => {
-      const { currency, adminAddr, swapConfig, admin, lp, lp2, guardian, anon, swapLibrary } = await setUp();
-      const AaveV3InvestStrategy = await ethers.getContractFactory("AaveV3InvestStrategy");
-      const strategy = await AaveV3InvestStrategy.deploy(ADDRESSES.USDC, ADDRESSES.AAVEv3);
-      const MultiStrategyERC4626 = await ethers.getContractFactory("MultiStrategyERC4626");
-      const vault = await hre.upgrades.deployProxy(
-        MultiStrategyERC4626,
-        [
-          NAME,
-          SYMB,
-          adminAddr,
-          ADDRESSES.USDC,
-          [await ethers.resolveAddress(strategy)],
-          [ethers.toUtf8Bytes("")],
-          [0],
-          [0],
-        ],
-        {
-          kind: "uups",
-          unsafeAllow: ["delegatecall"],
-        }
-      );
-      await currency.connect(lp).approve(vault, MaxUint256);
-      await currency.connect(lp2).approve(vault, MaxUint256);
-      await grantRole(hre, vault.connect(admin), "LP_ROLE", lp);
-      await grantRole(hre, vault.connect(admin), "LP_ROLE", lp2);
-
-      return {
-        currency,
-        MultiStrategyERC4626,
-        AaveV3InvestStrategy,
-        swapConfig,
-        vault,
-        strategy,
-        adminAddr,
-        lp,
-        lp2,
-        anon,
-        guardian,
-        admin,
-        swapLibrary,
-      };
-    },
-    harvestRewards: null,
-    accessControlCheck: async (action, user, role, contract) =>
-      expect(action).to.be.revertedWithACError(contract, user, role),
-    getSwapConfig: null,
-    setSwapConfig: null,
   },
   {
     name: "CompoundV3Strategy+AccessManaged",
@@ -365,7 +241,7 @@ const variants = [
           kind: "uups",
           unsafeAllow: ["delegatecall"],
           proxyFactory: AccessManagedProxy,
-          deployFunction: async (hre, opts, factory, ...args) => ozUpgradesDeploy(hre, opts, factory, ...args, acMgr),
+          deployFunction: async (_hre, opts, factory, ...args) => ozUpgradesDeploy(hre, opts, factory, ...args, acMgr),
         }
       );
       await currency.connect(lp).approve(vault, MaxUint256);
@@ -432,7 +308,7 @@ const variants = [
     getSwapConfig: async (vault, strategy) => strategy.getSwapConfig(vault),
     setSwapConfig: async (vault, swapConfig) =>
       vault.forwardToStrategy(0, CompoundV3StrategyMethods.setSwapConfig, encodeSwapConfig(swapConfig)),
-    grantAccess: async (hre, operation, vault, admin, user, acMgr) => {
+    grantAccess: async (_hre, operation, vault, admin, user, acMgr) => {
       const roles = {
         LP_ROLE: 1,
         LOM_ADMIN: 2,
@@ -449,75 +325,6 @@ const variants = [
     },
     accessManaged: true,
   },
-  {
-    name: "SwapStableAAVEV3Strategy",
-    supplyToken: ADDRESSES.USDC_NATIVE,
-    fixture: async () => {
-      const { currency, swapLibrary, adminAddr, admin, lp, lp2, guardian, anon } = await setUp();
-      // Use an specific swapConfig, not the same used for COMP
-      const swapConfig = buildUniswapConfig(_W("0.001"), 100, ADDRESSES.UNISWAP);
-      const SwapStableAaveV3InvestStrategy = await ethers.getContractFactory("SwapStableAaveV3InvestStrategy", {
-        libraries: { SwapLibrary: await ethers.resolveAddress(swapLibrary) },
-      });
-      const strategy = await SwapStableAaveV3InvestStrategy.deploy(
-        ADDRESSES.USDC,
-        ADDRESSES.USDC_NATIVE,
-        _W(1),
-        ADDRESSES.AAVEv3
-      );
-
-      const MultiStrategyERC4626 = await ethers.getContractFactory("MultiStrategyERC4626");
-      const vault = await hre.upgrades.deployProxy(
-        MultiStrategyERC4626,
-        [
-          NAME,
-          SYMB,
-          adminAddr,
-          ADDRESSES.USDC,
-          [await ethers.resolveAddress(strategy)],
-          [encodeSwapConfig(swapConfig)],
-          [0],
-          [0],
-        ],
-        {
-          kind: "uups",
-          unsafeAllow: ["delegatecall"],
-        }
-      );
-
-      await currency.connect(lp).approve(vault, MaxUint256);
-      await currency.connect(lp2).approve(vault, MaxUint256);
-      await grantRole(hre, vault.connect(admin), "LP_ROLE", lp);
-      await grantRole(hre, vault.connect(admin), "LP_ROLE", lp2);
-
-      return {
-        currency,
-        MultiStrategyERC4626,
-        SwapStableAaveV3InvestStrategy,
-        swapConfig,
-        vault,
-        strategy,
-        adminAddr,
-        lp,
-        lp2,
-        anon,
-        guardian,
-        admin,
-        swapLibrary,
-      };
-    },
-    harvestRewards: null,
-    accessControlCheck: async (action, user, role, contract) =>
-      expect(action).to.be.revertedWithACError(contract, user, role),
-    getSwapConfig: async (vault, strategy) => strategy.getSwapConfig(vault),
-    setSwapConfig: async (vault, swapConfig) =>
-      vault.forwardToStrategy(0, SwapStableAaveV3InvestStrategyMethods.setSwapConfig, encodeSwapConfig(swapConfig)),
-    grantAccess: async (hre, operation, vault, admin, user) => {
-      await grantRole(hre, vault.connect(admin), "FORWARD_TO_STRATEGY_ROLE", user);
-      const specificRole = await vault.getForwardToStrategyRole(0, operation);
-      await grantRole(hre, vault.connect(admin), specificRole, user);
-    },
-  },
 ];
 
 // Checks an OutflowLimitiedAMMSV without slotSize set behaves the same way as AccessManagedMSV
@@ -529,7 +336,9 @@ variants.push({
 });
 
 variants.forEach((variant) => {
-  const it = (testDescription, test) => tagitVariant(variant, false, testDescription, test);
+  function it(testDescription, test) {
+    return tagitVariant(variant, false, testDescription, test);
+  }
   it.only = (testDescription, test) => tagitVariant(variant, true, testDescription, test);
 
   describe(`${variant.name} contract tests`, function () {
@@ -566,32 +375,6 @@ variants.forEach((variant) => {
         CompoundV3InvestStrategy,
         "RewardsManagerRequired"
       );
-    });
-
-    it("Checks reverts if extraData is sent on initialization [!CompoundV3ERC4626]", async () => {
-      if (variant.accessManaged) return; // tagit doens't support double neg
-      const {
-        MultiStrategyERC4626,
-        adminAddr,
-        swapConfig,
-        strategy,
-        CompoundV3InvestStrategy,
-        AaveV3InvestStrategy,
-        SwapStableAaveV3InvestStrategy,
-      } = await helpers.loadFixture(variant.fixture);
-      const Strategy = CompoundV3InvestStrategy || AaveV3InvestStrategy || SwapStableAaveV3InvestStrategy;
-      const initData =
-        variant.name !== "AAVEV3Strategy" ? encodeSwapConfig(swapConfig) + "f".repeat(64) : `0x${"f".repeat(64)}`;
-      await expect(
-        hre.upgrades.deployProxy(
-          MultiStrategyERC4626,
-          [NAME, SYMB, adminAddr, ADDRESSES.USDC, [await ethers.resolveAddress(strategy)], [initData], [0], [0]],
-          {
-            kind: "uups",
-            unsafeAllow: ["delegatecall"],
-          }
-        )
-      ).to.be.revertedWithCustomError(Strategy, "NoExtraDataAllowed");
     });
 
     it("Checks entering the vault is permissioned, exit isn't [!SwapStableAAVEV3Strategy]", async () => {
@@ -710,24 +493,6 @@ variants.forEach((variant) => {
         await variant.accessControlCheck(variant.harvestRewards(vault.connect(anon), _A(100)), anon, null, vault);
         await acMgr.connect(admin).setTargetFunctionRole(vault, [specificSelector], specificSelector);
         await acMgr.connect(admin).grantRole(specificSelector, anon, 0);
-      } else {
-        // Using MultiStrategyERC4626
-        await variant.accessControlCheck(
-          variant.harvestRewards(vault.connect(anon), _A(100)),
-          anon,
-          "FORWARD_TO_STRATEGY_ROLE",
-          vault
-        );
-        await grantRole(hre, vault.connect(admin), "FORWARD_TO_STRATEGY_ROLE", anon);
-        // Still fails because other role is missing
-        const specificRole = await vault.getForwardToStrategyRole(0, CompoundV3StrategyMethods.harvestRewards);
-        await variant.accessControlCheck(
-          variant.harvestRewards(vault.connect(anon), _A(100)),
-          anon,
-          specificRole,
-          vault
-        );
-        await grantRole(hre, vault.connect(admin), specificRole, anon);
       }
 
       await expect(variant.harvestRewards(vault.connect(anon), _A(100))).to.be.revertedWith("AS");
@@ -766,18 +531,6 @@ variants.forEach((variant) => {
       await expect(vault.connect(lp2).mint(_A(2000), lp2)).not.to.be.reverted;
 
       expect(await vault.totalAssets()).to.be.closeTo(_A(3000), MCENT);
-      // Using MultiStrategyERC4626
-      await variant.accessControlCheck(
-        variant.harvestRewards(vault.connect(anon), _A(100)),
-        anon,
-        "FORWARD_TO_STRATEGY_ROLE",
-        vault
-      );
-      await grantRole(hre, vault.connect(admin), "FORWARD_TO_STRATEGY_ROLE", anon);
-      // Still fails because other role is missing
-      const specificRole = await vault.getForwardToStrategyRole(0, CompoundV3StrategyMethods.harvestRewards);
-      await variant.accessControlCheck(variant.harvestRewards(vault.connect(anon), _A(100)), anon, specificRole, vault);
-      await grantRole(hre, vault.connect(admin), specificRole, anon);
 
       await expect(variant.harvestRewards(vault.connect(anon), _A(100))).to.be.revertedWith("AS");
 

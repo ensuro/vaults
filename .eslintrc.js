@@ -9,6 +9,7 @@ module.exports = {
   globals: {
     Atomics: "readonly",
     SharedArrayBuffer: "readonly",
+    BigInt: "readonly",
     // hre: "readonly",
   },
   parserOptions: {
