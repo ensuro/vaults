@@ -3,7 +3,7 @@ pragma solidity ^0.8.0;
 
 import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
 import {SwapAssetInvestStrategy} from "./SwapAssetInvestStrategy.sol";
-import {AggregatorV3Interface} from "./dependencies/chainlink/AggregatorV3Interface.sol";
+import {AggregatorV3Interface} from "../dependencies/chainlink/AggregatorV3Interface.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 /**

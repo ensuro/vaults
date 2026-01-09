@@ -158,55 +158,6 @@ const SwapStableAaveV3InvestStrategyMethods = {
 
 const variants = [
   {
-    name: "CompoundV3ERC4626",
-    cToken: ADDRESSES.cUSDCv3,
-    fixture: async () => {
-      const { currency, swapLibrary, adminAddr, swapConfig, admin, lp, lp2, guardian, anon } = await setUp();
-      const CompoundV3ERC4626 = await ethers.getContractFactory("CompoundV3ERC4626", {
-        libraries: {
-          SwapLibrary: await ethers.resolveAddress(swapLibrary),
-        },
-      });
-      const strategy = await CompoundV3ERC4626.deploy(ADDRESSES.cUSDCv3, ADDRESSES.REWARDS);
-      const vault = await hre.upgrades.deployProxy(CompoundV3ERC4626, [NAME, SYMB, adminAddr, swapConfig], {
-        kind: "uups",
-        constructorArgs: [ADDRESSES.cUSDCv3, ADDRESSES.REWARDS],
-        unsafeAllow: ["external-library-linking"],
-      });
-      await currency.connect(lp).approve(vault, MaxUint256);
-      await currency.connect(lp2).approve(vault, MaxUint256);
-      await grantRole(hre, vault.connect(admin), "LP_ROLE", lp);
-      await grantRole(hre, vault.connect(admin), "LP_ROLE", lp2);
-
-      return {
-        currency,
-        CompoundV3ERC4626,
-        swapConfig,
-        vault,
-        strategy,
-        adminAddr,
-        lp,
-        lp2,
-        anon,
-        guardian,
-        admin,
-        swapLibrary,
-      };
-    },
-    harvestRewards: async (vault, amount) => vault.harvestRewards(amount),
-    accessControlCheck: async (action, user, role, contract) =>
-      expect(action).to.be.revertedWithACError(contract, user, role),
-    getSwapConfig: async (vault) => vault.getSwapConfig(),
-    setSwapConfig: async (vault, swapConfig) => vault.setSwapConfig(swapConfig),
-    grantAccess: async (_hre, operation, vault, admin, user) =>
-      grantRole(
-        hre,
-        vault.connect(admin),
-        operation == CompoundV3StrategyMethods.harvestRewards ? "HARVEST_ROLE" : "SWAP_ADMIN_ROLE",
-        user
-      ),
-  },
-  {
     name: "CompoundV3Strategy+AccessManaged",
     cToken: ADDRESSES.cUSDCv3,
     supplyToken: ADDRESSES.USDC,
@@ -359,16 +310,6 @@ variants.forEach((variant) => {
       }
     });
 
-    it("Checks vault constructs with disabled initializer [CompoundV3ERC4626]", async () => {
-      const { CompoundV3ERC4626, adminAddr, swapConfig } = await helpers.loadFixture(variant.fixture);
-      const newVault = await CompoundV3ERC4626.deploy(ADDRESSES.cUSDCv3, ADDRESSES.REWARDS);
-      await expect(newVault.deploymentTransaction()).to.emit(newVault, "Initialized");
-      await expect(newVault.initialize("foo", "bar", adminAddr, swapConfig)).to.be.revertedWithCustomError(
-        CompoundV3ERC4626,
-        "InvalidInitialization"
-      );
-    });
-
     it("Checks strategy can't be constructed with rewards=0 [CompoundV3Strategy]", async () => {
       const { CompoundV3InvestStrategy } = await helpers.loadFixture(variant.fixture);
       await expect(CompoundV3InvestStrategy.deploy(ADDRESSES.cUSDCv3, ZeroAddress)).to.be.revertedWithCustomError(
@@ -469,15 +410,7 @@ variants.forEach((variant) => {
       await expect(vault.connect(lp2).mint(_A(2000), lp2)).not.to.be.reverted;
 
       expect(await vault.totalAssets()).to.be.closeTo(_A(3000), MCENT);
-      if (variant.name === "CompoundV3ERC4626") {
-        await variant.accessControlCheck(
-          variant.harvestRewards(vault.connect(anon), _A(100)),
-          anon,
-          "HARVEST_ROLE",
-          vault
-        );
-        await grantRole(hre, vault.connect(admin), "HARVEST_ROLE", anon);
-      } else if (variant.accessManaged) {
+      if (variant.accessManaged) {
         // Using AccessManagedMSV
         await variant.accessControlCheck(
           variant.harvestRewards(vault.connect(anon), _A(100)),

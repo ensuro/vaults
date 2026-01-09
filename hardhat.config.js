@@ -21,6 +21,13 @@ module.exports = {
   networks: {
     hardhat: {
       initialBaseFeePerGas: 0,
+      forking:
+        process.env.INFURA_URL || process.env.ALCHEMY_URL
+          ? {
+              url: process.env.INFURA_URL || process.env.ALCHEMY_URL,
+              blockNumber: process.env.TEST_BLOCK ? parseInt(process.env.TEST_BLOCK) : 81382684,
+            }
+          : undefined,
     },
   },
   contractSizer: {

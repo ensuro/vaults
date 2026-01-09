@@ -3,11 +3,11 @@ pragma solidity ^0.8.0;
 
 import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
 import {SwapLibrary} from "@ensuro/swaplibrary/contracts/SwapLibrary.sol";
-import {IInvestStrategy} from "./interfaces/IInvestStrategy.sol";
+import {IInvestStrategy} from "../interfaces/IInvestStrategy.sol";
 import {StorageSlot} from "@openzeppelin/contracts/utils/StorageSlot.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
-import {IExposeStorage} from "./interfaces/IExposeStorage.sol";
-import {InvestStrategyClient} from "./InvestStrategyClient.sol";
+import {IExposeStorage} from "../interfaces/IExposeStorage.sol";
+import {InvestStrategyClient} from "../InvestStrategyClient.sol";
 
 /**
  * @title SwapAssetInvestStrategy

@@ -84,6 +84,7 @@ async function setUp() {
     STRATEGY_ADMIN_ROLE: 4,
     QUEUE_ADMIN_ROLE: 5,
     FORWARD_TO_STRATEGY_ROLE: 6,
+    DEPOSIT_TO_STRATEGIES_ROLE: 7,
   };
   const vault = await hre.upgrades.deployProxy(
     AccessManagedMSV,
@@ -113,6 +114,7 @@ async function setUp() {
   ]);
   await setupAMRole(acMgr.connect(admin), vault, roles, "REBALANCER_ROLE", ["rebalance"]);
   await setupAMRole(acMgr.connect(admin), vault, roles, "FORWARD_TO_STRATEGY_ROLE", ["forwardToStrategy"]);
+  await setupAMRole(acMgr.connect(admin), vault, roles, "DEPOSIT_TO_STRATEGIES_ROLE", ["depositToStrategies"]);
   await currency.connect(lp).approve(vault, MaxUint256);
   await currency.connect(lp2).approve(vault, MaxUint256);
   await acMgr.connect(admin).grantRole(roles.LP_ROLE, lp, 0);
@@ -179,6 +181,7 @@ describe("MultiStrategy Integration fork tests", function () {
     const specificSelector = await vault.getForwardToStrategySelector(1, CompoundV3StrategyMethods.harvestRewards);
     await acMgr.connect(admin).setTargetFunctionRole(vault, [specificSelector], specificSelector);
     await acMgr.connect(admin).grantRole(specificSelector, admin, 0);
+    await acMgr.connect(admin).grantRole(roles.DEPOSIT_TO_STRATEGIES_ROLE, vault, 0);
 
     await vault
       .connect(admin)

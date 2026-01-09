@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
-import {ICompoundV3} from "./dependencies/compound-v3/ICompoundV3.sol";
-import {ICometRewards} from "./dependencies/compound-v3/ICometRewards.sol";
+import {ICompoundV3} from "../dependencies/compound-v3/ICompoundV3.sol";
+import {ICometRewards} from "../dependencies/compound-v3/ICometRewards.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {SwapLibrary} from "@ensuro/swaplibrary/contracts/SwapLibrary.sol";
-import {IInvestStrategy} from "./interfaces/IInvestStrategy.sol";
+import {IInvestStrategy} from "../interfaces/IInvestStrategy.sol";
 import {StorageSlot} from "@openzeppelin/contracts/utils/StorageSlot.sol";
-import {IExposeStorage} from "./interfaces/IExposeStorage.sol";
-import {InvestStrategyClient} from "./InvestStrategyClient.sol";
-import {MSVBase} from "./MSVBase.sol";
+import {IExposeStorage} from "../interfaces/IExposeStorage.sol";
+import {InvestStrategyClient} from "../InvestStrategyClient.sol";
+import {MSVBase} from "../MSVBase.sol";
 
 /**
  * @title CompoundV3InvestStrategy
