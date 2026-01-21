@@ -88,7 +88,6 @@ async function setUp() {
       [
         NAME,
         SYMB,
-        adminAddr,
         await ethers.resolveAddress(assetAddress),
         await ethers.resolveAddress(strategyAddress),
         strategyData,

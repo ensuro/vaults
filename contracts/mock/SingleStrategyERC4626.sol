@@ -35,8 +35,6 @@ contract SingleStrategyERC4626 is ERC4626Upgradeable, UUPSUpgradeable, IExposeSt
   using Address for address;
   using InvestStrategyClient for IInvestStrategy;
 
-  bytes32 public constant SET_STRATEGY_ROLE = keccak256("SET_STRATEGY_ROLE");
-
   IInvestStrategy internal _strategy;
 
   // Events duplicated here from InvestStrategyClient library, so they go to the ABI
@@ -57,7 +55,6 @@ contract SingleStrategyERC4626 is ERC4626Upgradeable, UUPSUpgradeable, IExposeSt
    *
    * @param name_ Name of the ERC20/ERC4626 token
    * @param symbol_ Symbol of the ERC20/ERC4626 token
-   * @param admin_ User that will receive the DEFAULT_ADMIN_ROLE and later can assign other permissions.
    * @param asset_ The asset() of the ERC4626
    * @param strategy_ The IInvestStrategy that will be used to manage the funds received.
    * @param initStrategyData Initialization data that will be sent to the IInvestStrategy
@@ -65,19 +62,17 @@ contract SingleStrategyERC4626 is ERC4626Upgradeable, UUPSUpgradeable, IExposeSt
   function initialize(
     string memory name_,
     string memory symbol_,
-    address admin_,
     IERC20 asset_,
     IInvestStrategy strategy_,
     bytes memory initStrategyData
   ) public virtual initializer {
-    __SingleStrategyERC4626_init(name_, symbol_, admin_, asset_, strategy_, initStrategyData);
+    __SingleStrategyERC4626_init(name_, symbol_, asset_, strategy_, initStrategyData);
   }
 
   // solhint-disable-next-line func-name-mixedcase
   function __SingleStrategyERC4626_init(
     string memory name_,
     string memory symbol_,
-    address,
     IERC20 asset_,
     IInvestStrategy strategy_,
     bytes memory initStrategyData

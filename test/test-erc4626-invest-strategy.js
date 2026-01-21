@@ -53,7 +53,7 @@ async function setUp() {
   async function setupVault(asset, strategy, strategyData = ethers.toUtf8Bytes("")) {
     const vault = await hre.upgrades.deployProxy(
       SingleStrategyERC4626,
-      [NAME, SYMB, adminAddr, await ethers.resolveAddress(asset), await ethers.resolveAddress(strategy), strategyData],
+      [NAME, SYMB, await ethers.resolveAddress(asset), await ethers.resolveAddress(strategy), strategyData],
       {
         kind: "uups",
         unsafeAllow: ["delegatecall"],

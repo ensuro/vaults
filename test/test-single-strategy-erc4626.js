@@ -28,14 +28,7 @@ async function setUp() {
   const SingleStrategyERC4626 = await ethers.getContractFactory("SingleStrategyERC4626");
   const vault = await hre.upgrades.deployProxy(
     SingleStrategyERC4626,
-    [
-      NAME,
-      SYMB,
-      adminAddr,
-      await ethers.resolveAddress(currency),
-      await ethers.resolveAddress(strategy),
-      encodeDummyStorage({}),
-    ],
+    [NAME, SYMB, await ethers.resolveAddress(currency), await ethers.resolveAddress(strategy), encodeDummyStorage({})],
     {
       kind: "uups",
       unsafeAllow: ["delegatecall"],
@@ -71,14 +64,12 @@ describe("SingleStrategyERC4626 contract tests", function () {
   });
 
   it("Initialization fails if strategy connect fails", async () => {
-    const { SingleStrategyERC4626, strategy, currency, adminAddr, DummyInvestStrategy } =
-      await helpers.loadFixture(setUp);
+    const { SingleStrategyERC4626, strategy, currency, DummyInvestStrategy } = await helpers.loadFixture(setUp);
     const otherVault = hre.upgrades.deployProxy(
       SingleStrategyERC4626,
       [
         NAME,
         SYMB,
-        adminAddr,
         await ethers.resolveAddress(currency),
         await ethers.resolveAddress(strategy),
         encodeDummyStorage({ failConnect: true }),
@@ -92,14 +83,12 @@ describe("SingleStrategyERC4626 contract tests", function () {
   });
 
   it("Initialization fails if extra data is sent", async () => {
-    const { SingleStrategyERC4626, strategy, currency, adminAddr, DummyInvestStrategy } =
-      await helpers.loadFixture(setUp);
+    const { SingleStrategyERC4626, strategy, currency, DummyInvestStrategy } = await helpers.loadFixture(setUp);
     const otherVault = hre.upgrades.deployProxy(
       SingleStrategyERC4626,
       [
         NAME,
         SYMB,
-        adminAddr,
         await ethers.resolveAddress(currency),
         await ethers.resolveAddress(strategy),
         encodeDummyStorage({}) + "f".repeat(64),
@@ -155,7 +144,7 @@ describe("SingleStrategyERC4626 contract tests", function () {
   });
 
   it("Initialization fails if strategy and vault have different assets", async () => {
-    const { SingleStrategyERC4626, DummyInvestStrategy, adminAddr, currency, admin } = await helpers.loadFixture(setUp);
+    const { SingleStrategyERC4626, DummyInvestStrategy, currency, admin } = await helpers.loadFixture(setUp);
 
     const differentCurrency = await initCurrency(
       { name: "Different USDC", symbol: "DUSDC", decimals: 6, initial_supply: _A(50000), extraArgs: [admin] },
@@ -170,7 +159,6 @@ describe("SingleStrategyERC4626 contract tests", function () {
         [
           NAME,
           SYMB,
-          adminAddr,
           await ethers.resolveAddress(currency),
           await ethers.resolveAddress(differentStrategy),
           encodeDummyStorage({}),
