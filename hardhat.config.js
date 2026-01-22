@@ -38,7 +38,6 @@ module.exports = {
   dependencyCompiler: {
     paths: [
       "@ensuro/utils/contracts/TestCurrency.sol",
-      "@ensuro/utils/contracts/TestCurrencyAC.sol",
       "@ensuro/utils/contracts/TestERC4626.sol",
       "@ensuro/swaplibrary/contracts/mocks/SwapRouterMock.sol",
       "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol",
