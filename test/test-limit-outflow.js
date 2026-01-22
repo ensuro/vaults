@@ -25,7 +25,7 @@ const SYMB = "MSV";
 async function setUp() {
   const [, lp, lp2, anon, guardian, admin] = await ethers.getSigners();
   const currency = await initCurrency(
-    { name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(50000), extraArgs: [admin] },
+    { name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(50000) },
     [lp, lp2],
     [_A(INITIAL), _A(INITIAL)]
   );
@@ -165,7 +165,9 @@ const variants = [
 ];
 
 variants.forEach((variant) => {
-  const it = (testDescription, test) => tagitVariant(variant, false, testDescription, test);
+  function it(testDescription, test) {
+    return tagitVariant(variant, false, testDescription, test);
+  }
   it.only = (testDescription, test) => tagitVariant(variant, true, testDescription, test);
 
   describe(`${variant.name} contract tests`, function () {

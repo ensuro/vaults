@@ -32,7 +32,6 @@ async function setUp() {
       symbol: "USDA",
       decimals: 6,
       initial_supply: _A(50000),
-      extraArgs: [admin],
     },
     [lp, lp2, uniswapRouterMock],
     [_A(INITIAL), _A(INITIAL), _A(INITIAL * 3)]
@@ -43,7 +42,6 @@ async function setUp() {
       symbol: "USDB",
       decimals: 6,
       initial_supply: _A(50000),
-      extraArgs: [admin],
     },
     [lp, lp2, uniswapRouterMock],
     [_A(INITIAL), _A(INITIAL), _A(INITIAL * 3)]
@@ -54,7 +52,6 @@ async function setUp() {
       symbol: "USDM",
       decimals: 18,
       initial_supply: _W(50000),
-      extraArgs: [admin],
     },
     [lp, lp2, uniswapRouterMock],
     [_W(INITIAL), _W(INITIAL), _W(INITIAL * 3)]
@@ -65,7 +62,6 @@ async function setUp() {
       symbol: "USDX",
       decimals: 18,
       initial_supply: _W(50000),
-      extraArgs: [admin],
     },
     [lp, lp2, uniswapRouterMock],
     [_W(INITIAL), _W(INITIAL), _W(INITIAL * 3)]
@@ -393,7 +389,7 @@ variants.forEach((variant) => {
 
 describe("SwapStableInvestStrategy constructor tests", function () {
   it("It reverts when asset or invest asset has >18 decimals", async () => {
-    const [, , , admin] = await ethers.getSigners();
+    const [, , ,] = await ethers.getSigners();
     const SwapLibrary = await ethers.getContractFactory("SwapLibrary");
     const swapLibrary = await SwapLibrary.deploy();
     const SwapStableInvestStrategy = await ethers.getContractFactory("SwapStableInvestStrategy", {
@@ -406,14 +402,12 @@ describe("SwapStableInvestStrategy constructor tests", function () {
       symbol: "USD6",
       decimals: 6,
       initial_supply: _A(50000),
-      extraArgs: [admin],
     });
     const USD20 = await initCurrency({
       name: "Another test Currency with 20 decimals",
       symbol: "USD20",
       decimals: 20,
       initial_supply: _A(50000),
-      extraArgs: [admin],
     });
     await expect(SwapStableInvestStrategy.deploy(USD6, USD20, _W(1))).to.be.revertedWithCustomError(
       SwapStableInvestStrategy,

@@ -29,7 +29,6 @@ async function setUp() {
       symbol: "USDC",
       decimals: 6,
       initial_supply: _A(50000),
-      extraArgs: [admin],
     },
     [lp, lp2, uniswapRouterMock],
     [_A(INITIAL), _A(INITIAL), _A(INITIAL * 3)]
@@ -40,7 +39,6 @@ async function setUp() {
       symbol: "WPOL",
       decimals: 18,
       initial_supply: _W(50000),
-      extraArgs: [admin],
     },
     [lp, lp2, uniswapRouterMock],
     [_W(INITIAL), _W(INITIAL), _W(INITIAL * 3)]
@@ -51,7 +49,6 @@ async function setUp() {
       symbol: "COMP",
       decimals: 18,
       initial_supply: _W(50000),
-      extraArgs: [admin],
     },
     [lp, lp2, uniswapRouterMock],
     [_W(INITIAL), _W(INITIAL), _W(INITIAL * 3)]

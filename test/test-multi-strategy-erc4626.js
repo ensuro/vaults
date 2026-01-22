@@ -17,7 +17,7 @@ const SYMB = "MSV";
 async function setUp() {
   const [, lp, lp2, anon, guardian, admin] = await ethers.getSigners();
   const currency = await initCurrency(
-    { name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(50000), extraArgs: [admin] },
+    { name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(50000) },
     [lp, lp2],
     [_A(INITIAL), _A(INITIAL)]
   );
@@ -982,11 +982,12 @@ variants.forEach((variant) => {
     });
 
     it("Initialization fails if any strategy and vault have different assets", async () => {
-      const { DummyInvestStrategy, adminAddr, currency, AccessManagedMSV, OutflowLimitedAMMSV, acMgr } =
-        await helpers.loadFixture(variant.fixture);
+      const { DummyInvestStrategy, currency, AccessManagedMSV, OutflowLimitedAMMSV, acMgr } = await helpers.loadFixture(
+        variant.fixture
+      );
 
       const differentCurrency = await initCurrency(
-        { name: "Different USDC", symbol: "DUSDC", decimals: 6, initial_supply: _A(50000), extraArgs: [adminAddr] },
+        { name: "Different USDC", symbol: "DUSDC", decimals: 6, initial_supply: _A(50000) },
         []
       );
 
@@ -1025,7 +1026,7 @@ variants.forEach((variant) => {
       const ContractFactory = AccessManagedMSV || OutflowLimitedAMMSV;
 
       const differentCurrency = await initCurrency(
-        { name: "Different USDC", symbol: "DUSDC", decimals: 6, initial_supply: _A(50000), extraArgs: [admin] },
+        { name: "Different USDC", symbol: "DUSDC", decimals: 6, initial_supply: _A(50000) },
         []
       );
 
@@ -1047,7 +1048,7 @@ variants.forEach((variant) => {
       const ContractFactory = AccessManagedMSV || OutflowLimitedAMMSV;
 
       const differentCurrency = await initCurrency(
-        { name: "Different USDC", symbol: "DUSDC", decimals: 6, initial_supply: _A(50000), extraArgs: [admin] },
+        { name: "Different USDC", symbol: "DUSDC", decimals: 6, initial_supply: _A(50000) },
         []
       );
 

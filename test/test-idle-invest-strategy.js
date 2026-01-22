@@ -1,6 +1,5 @@
 const { expect } = require("chai");
-const { amountFunction, getRole, makeAllViewsPublic, setupAMRole } = require("@ensuro/utils/js/utils");
-const { encodeDummyStorage } = require("./utils");
+const { amountFunction, makeAllViewsPublic, setupAMRole } = require("@ensuro/utils/js/utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
@@ -15,16 +14,6 @@ const INITIAL = 10000;
 const NAME = "Single Strategy Vault";
 const SYMB = "SSV";
 
-const CENT = _A("0.01");
-const MCENT = CENT / 1000n;
-
-const OverrideOption = {
-  deposit: 0,
-  mint: 1,
-  withdraw: 2,
-  redeem: 3,
-};
-
 async function setUp() {
   const [, lp, lp2, anon, guardian, admin] = await ethers.getSigners();
 
@@ -34,7 +23,6 @@ async function setUp() {
       symbol: "USDC",
       decimals: 6,
       initial_supply: _A(50000),
-      extraArgs: [admin],
     },
     [lp, lp2],
     [_A(INITIAL), _A(INITIAL)]
@@ -47,10 +35,6 @@ async function setUp() {
   const ERC4626InvestStrategy = await ethers.getContractFactory("ERC4626InvestStrategy");
   const TestERC4626 = await ethers.getContractFactory("TestERC4626");
   const investVault = await TestERC4626.deploy("Some vault", "VAULT", USDC);
-
-  // Grant roles to the test vault, so it can mint/burn earnings/losses
-  await USDC.connect(admin).grantRole(getRole("MINTER_ROLE"), investVault);
-  await USDC.connect(admin).grantRole(getRole("BURNER_ROLE"), investVault);
 
   const AccessManagedMSV = await ethers.getContractFactory("AccessManagedMSV");
   const AccessManagedProxy = await ethers.getContractFactory("AccessManagedProxy");
@@ -81,7 +65,7 @@ async function setUp() {
         kind: "uups",
         unsafeAllow: ["delegatecall"],
         proxyFactory: AccessManagedProxy,
-        deployFunction: async (hre, opts, factory, ...args) => ozUpgradesDeploy(hre, opts, factory, ...args, acMgr),
+        deployFunction: async (_hre, opts, factory, ...args) => ozUpgradesDeploy(_hre, opts, factory, ...args, acMgr),
       }
     );
     await makeAllViewsPublic(acMgr.connect(admin), vault);
@@ -185,9 +169,8 @@ describe("IdleInvestStrategy contract tests", function () {
   });
 
   it("Can be removed", async () => {
-    const { USDC, vault, lp, strategy, admin } = await helpers.loadFixture(setUpMultiStrategies);
+    const { vault, lp, strategy, admin } = await helpers.loadFixture(setUpMultiStrategies);
 
-    const lpBalance = await USDC.balanceOf(lp);
     await vault.connect(lp).deposit(_A(100), lp);
     expect(await vault.totalAssets()).to.equal(_A(100));
 

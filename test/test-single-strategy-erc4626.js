@@ -17,7 +17,7 @@ const SYMB = "SSV";
 async function setUp() {
   const [, lp, lp2, anon, guardian, admin] = await ethers.getSigners();
   const currency = await initCurrency(
-    { name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(50000), extraArgs: [admin] },
+    { name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(50000) },
     [lp, lp2],
     [_A(INITIAL), _A(INITIAL)]
   );
@@ -144,10 +144,10 @@ describe("SingleStrategyERC4626 contract tests", function () {
   });
 
   it("Initialization fails if strategy and vault have different assets", async () => {
-    const { SingleStrategyERC4626, DummyInvestStrategy, currency, admin } = await helpers.loadFixture(setUp);
+    const { SingleStrategyERC4626, DummyInvestStrategy, currency } = await helpers.loadFixture(setUp);
 
     const differentCurrency = await initCurrency(
-      { name: "Different USDC", symbol: "DUSDC", decimals: 6, initial_supply: _A(50000), extraArgs: [admin] },
+      { name: "Different USDC", symbol: "DUSDC", decimals: 6, initial_supply: _A(50000) },
       []
     );
 
@@ -175,7 +175,7 @@ describe("SingleStrategyERC4626 contract tests", function () {
     const { vault, DummyInvestStrategy, admin, SingleStrategyERC4626 } = await helpers.loadFixture(setUp);
 
     const differentCurrency = await initCurrency(
-      { name: "Different USDC", symbol: "DUSDC", decimals: 6, initial_supply: _A(50000), extraArgs: [admin] },
+      { name: "Different USDC", symbol: "DUSDC", decimals: 6, initial_supply: _A(50000) },
       []
     );
 
