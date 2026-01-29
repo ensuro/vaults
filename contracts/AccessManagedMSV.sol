@@ -9,7 +9,8 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {MSVBase} from "./MSVBase.sol";
 import {IInvestStrategy} from "./interfaces/IInvestStrategy.sol";
-import {AccessManagedProxy} from "./AccessManagedProxy.sol";
+import {AccessManagedProxy} from "@ensuro/access-managed-proxy/contracts/AccessManagedProxy.sol";
+import {AMPUtils} from "@ensuro/access-managed-proxy/contracts/AMPUtils.sol";
 
 /**
  * @title AccessManagedMSV
@@ -138,7 +139,7 @@ contract AccessManagedMSV is MSVBase, UUPSUpgradeable, ERC4626Upgradeable {
   function getForwardToStrategySelector(uint8 strategyIndex, uint8 method) public view returns (bytes4 selector) {
     // I assemble a fake selector combining the address of the strategy, the index, and the method called
     address strategy = address(_strategies[strategyIndex]);
-    return bytes4(keccak256(abi.encode(strategy, method)));
+    return AMPUtils.makeSelector(abi.encode(strategy, method));
   }
 
   /// @inheritdoc MSVBase
@@ -152,6 +153,6 @@ contract AccessManagedMSV is MSVBase, UUPSUpgradeable, ERC4626Upgradeable {
     // only on the forwardToStrategy call.
     // In the future we might use consumeScheduledOp flow to implement specific delays for specific
     // forward calls
-    if (!immediate) revert AccessManagedProxy.AccessManagedUnauthorized(msg.sender);
+    if (!immediate) revert AMPUtils.AccessManagedUnauthorized(msg.sender);
   }
 }

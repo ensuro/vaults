@@ -1,11 +1,11 @@
 const { expect } = require("chai");
-const { amountFunction, _W, setupAMRole, makeAllViewsPublic } = require("@ensuro/utils/js/utils");
+const { amountFunction, _W } = require("@ensuro/utils/js/utils");
 const { initForkCurrency, setupChain } = require("@ensuro/utils/js/test-utils");
 const { buildUniswapConfig } = require("@ensuro/swaplibrary/js/utils");
-const { encodeSwapConfig } = require("./utils");
+const { encodeSwapConfig, makeAllPublic } = require("./utils");
+const { deployAMPProxy } = require("@ensuro/access-managed-proxy/js/deployProxy");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
-const { deploy: ozUpgradesDeploy } = require("@openzeppelin/hardhat-upgrades/dist/utils");
 
 const { ethers } = hre;
 const { MaxUint256 } = hre.ethers;
@@ -74,19 +74,9 @@ async function setUp() {
   const AaveV3InvestStrategy = await ethers.getContractFactory("AaveV3InvestStrategy");
   const aaveStrategy = await AaveV3InvestStrategy.deploy(ADDRESSES.USDC, ADDRESSES.AAVEv3);
   const AccessManagedMSV = await ethers.getContractFactory("AccessManagedMSV");
-  const AccessManagedProxy = await ethers.getContractFactory("AccessManagedProxy");
   const AccessManager = await ethers.getContractFactory("AccessManager");
   const acMgr = await AccessManager.deploy(admin);
-  const roles = {
-    LP_ROLE: 1,
-    LOM_ADMIN: 2,
-    REBALANCER_ROLE: 3,
-    STRATEGY_ADMIN_ROLE: 4,
-    QUEUE_ADMIN_ROLE: 5,
-    FORWARD_TO_STRATEGY_ROLE: 6,
-    DEPOSIT_TO_STRATEGIES_ROLE: 7,
-  };
-  const vault = await hre.upgrades.deployProxy(
+  const vault = await deployAMPProxy(
     AccessManagedMSV,
     [
       NAME,
@@ -100,26 +90,13 @@ async function setUp() {
     {
       kind: "uups",
       unsafeAllow: ["delegatecall"],
-      proxyFactory: AccessManagedProxy,
-      deployFunction: async (_hre, opts, factory, ...args) => ozUpgradesDeploy(hre, opts, factory, ...args, acMgr),
+      acMgr,
+      skipViewsAndPure: true,
     }
   );
-  await makeAllViewsPublic(acMgr.connect(admin), vault);
-  await setupAMRole(acMgr.connect(admin), vault, roles, "LP_ROLE", [
-    "withdraw",
-    "deposit",
-    "mint",
-    "redeem",
-    "transfer",
-  ]);
-  await setupAMRole(acMgr.connect(admin), vault, roles, "REBALANCER_ROLE", ["rebalance"]);
-  await setupAMRole(acMgr.connect(admin), vault, roles, "FORWARD_TO_STRATEGY_ROLE", ["forwardToStrategy"]);
-  await setupAMRole(acMgr.connect(admin), vault, roles, "DEPOSIT_TO_STRATEGIES_ROLE", ["depositToStrategies"]);
+  await makeAllPublic(vault, acMgr.connect(admin));
   await currency.connect(lp).approve(vault, MaxUint256);
   await currency.connect(lp2).approve(vault, MaxUint256);
-  await acMgr.connect(admin).grantRole(roles.LP_ROLE, lp, 0);
-  await acMgr.connect(admin).grantRole(roles.LP_ROLE, lp2, 0);
-  await acMgr.connect(admin).grantRole(roles.REBALANCER_ROLE, admin, 0);
 
   const COMPPrice = await ethers.getContractAt(ChainlinkABI, ADDRESSES.COMP_CHAINLINK);
 
@@ -141,7 +118,6 @@ async function setUp() {
     vault,
     COMPPrice,
     acMgr,
-    roles,
   };
 }
 
@@ -156,7 +132,7 @@ describe("MultiStrategy Integration fork tests", function () {
   });
 
   it("Can perform a basic smoke test", async () => {
-    const { vault, currency, lp, lp2, admin, aaveStrategy, compoundStrategy, COMPPrice, acMgr, roles } =
+    const { vault, currency, lp, lp2, admin, aaveStrategy, compoundStrategy, COMPPrice, acMgr } =
       await helpers.loadFixture(setUp);
     expect(await vault.name()).to.equal(NAME);
     await vault.connect(lp).deposit(_A(5000), lp);
@@ -177,11 +153,9 @@ describe("MultiStrategy Integration fork tests", function () {
     // Take the price from the oracle (8 decimals) and add 10 more to convert it to wad
     const compUSD = (await COMPPrice.latestRoundData())[1] * 10n ** 10n;
 
-    await acMgr.connect(admin).grantRole(roles.FORWARD_TO_STRATEGY_ROLE, admin, 0);
     const specificSelector = await vault.getForwardToStrategySelector(1, CompoundV3StrategyMethods.harvestRewards);
     await acMgr.connect(admin).setTargetFunctionRole(vault, [specificSelector], specificSelector);
     await acMgr.connect(admin).grantRole(specificSelector, admin, 0);
-    await acMgr.connect(admin).grantRole(roles.DEPOSIT_TO_STRATEGIES_ROLE, vault, 0);
 
     await vault
       .connect(admin)

@@ -1,9 +1,10 @@
 const { expect } = require("chai");
-const { amountFunction, makeAllViewsPublic, setupAMRole } = require("@ensuro/utils/js/utils");
+const { amountFunction } = require("@ensuro/utils/js/utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
+const { deployAMPProxy } = require("@ensuro/access-managed-proxy/js/deployProxy");
+const { makeAllPublic } = require("./utils");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
-const { deploy: ozUpgradesDeploy } = require("@openzeppelin/hardhat-upgrades/dist/utils");
 
 const { ethers } = hre;
 const { MaxUint256 } = hre.ethers;
@@ -37,20 +38,11 @@ async function setUp() {
   const investVault = await TestERC4626.deploy("Some vault", "VAULT", USDC);
 
   const AccessManagedMSV = await ethers.getContractFactory("AccessManagedMSV");
-  const AccessManagedProxy = await ethers.getContractFactory("AccessManagedProxy");
   const AccessManager = await ethers.getContractFactory("AccessManager");
   const acMgr = await AccessManager.deploy(admin);
-  const roles = {
-    LP_ROLE: 1,
-    LOM_ADMIN: 2,
-    REBALANCER_ROLE: 3,
-    STRATEGY_ADMIN_ROLE: 4,
-    QUEUE_ADMIN_ROLE: 5,
-    FORWARD_TO_STRATEGY_ROLE: 6,
-  };
 
   async function setupVault(asset, strategies_, initStrategyDatas, depositQueue, withdrawQueue) {
-    const vault = await hre.upgrades.deployProxy(
+    const vault = await deployAMPProxy(
       AccessManagedMSV,
       [
         NAME,
@@ -64,23 +56,13 @@ async function setUp() {
       {
         kind: "uups",
         unsafeAllow: ["delegatecall"],
-        proxyFactory: AccessManagedProxy,
-        deployFunction: async (_hre, opts, factory, ...args) => ozUpgradesDeploy(_hre, opts, factory, ...args, acMgr),
+        acMgr,
+        skipViewsAndPure: true,
       }
     );
-    await makeAllViewsPublic(acMgr.connect(admin), vault);
-    await setupAMRole(acMgr.connect(admin), vault, roles, "LP_ROLE", [
-      "withdraw",
-      "deposit",
-      "mint",
-      "redeem",
-      "transfer",
-    ]);
-    // Whitelist LPs
+    await makeAllPublic(vault, acMgr.connect(admin));
     await asset.connect(lp).approve(vault, MaxUint256);
     await asset.connect(lp2).approve(vault, MaxUint256);
-    await acMgr.connect(admin).grantRole(roles.LP_ROLE, lp, 0);
-    await acMgr.connect(admin).grantRole(roles.LP_ROLE, lp2, 0);
     return vault;
   }
 

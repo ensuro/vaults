@@ -1,14 +1,9 @@
 const { expect } = require("chai");
-const {
-  amountFunction,
-  makeAllViewsPublic,
-  mergeFragments,
-  setupAMRole,
-  tagitVariant,
-} = require("@ensuro/utils/js/utils");
+const { amountFunction, tagitVariant } = require("@ensuro/utils/js/utils");
 const { WEEK, DAY } = require("@ensuro/utils/js/constants");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
-const { encodeDummyStorage } = require("./utils");
+const { encodeDummyStorage, makeAllPublic } = require("./utils");
+const { deployAMPProxy } = require("@ensuro/access-managed-proxy/js/deployProxy");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
@@ -37,9 +32,6 @@ async function setUp() {
       .fill(0)
       .map(() => DummyInvestStrategy.deploy(currency))
   );
-  const ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
-  const AccessManagedProxy = await ethers.getContractFactory("AccessManagedProxy");
-
   return {
     currency,
     strategies,
@@ -49,8 +41,6 @@ async function setUp() {
     anon,
     guardian,
     admin,
-    ERC1967Proxy,
-    AccessManagedProxy,
   };
 }
 
@@ -63,22 +53,8 @@ const variants = [
       const ret = await setUp();
       const { strategies, admin, currency } = ret;
       const OutflowLimitedAMMSV = await ethers.getContractFactory("OutflowLimitedAMMSV");
-      const AccessManagedProxy = await ethers.getContractFactory("AccessManagedProxy");
       const AccessManager = await ethers.getContractFactory("AccessManager");
       const acMgr = await AccessManager.deploy(admin);
-      const msv = await OutflowLimitedAMMSV.deploy();
-      const combinedABI = mergeFragments(
-        OutflowLimitedAMMSV.interface.fragments,
-        AccessManagedProxy.interface.fragments
-      );
-      const roles = {
-        LP_ROLE: 1,
-        LOM_ADMIN: 2,
-        REBALANCER_ROLE: 3,
-        STRATEGY_ADMIN_ROLE: 4,
-        QUEUE_ADMIN_ROLE: 5,
-        FORWARD_TO_STRATEGY_ROLE: 6,
-      };
 
       async function deployVault(strategies_, initStrategyDatas, depositQueue, withdrawQueue) {
         if (strategies_ === undefined) {
@@ -95,58 +71,32 @@ const variants = [
         if (withdrawQueue === undefined) {
           withdrawQueue = strategies_.map((_, i) => i);
         }
-        const initializeData = msv.interface.encodeFunctionData("initialize", [
-          NAME,
-          SYMB,
-          await ethers.resolveAddress(currency),
-          await Promise.all(strategies_.map(ethers.resolveAddress)),
-          initStrategyDatas,
-          depositQueue,
-          withdrawQueue,
-        ]);
-        const proxy = await AccessManagedProxy.deploy(msv, initializeData, acMgr);
-        const deploymentTransaction = proxy.deploymentTransaction();
-        const vault = await ethers.getContractAt(combinedABI, await ethers.resolveAddress(proxy));
-        vault.deploymentTransaction = () => deploymentTransaction;
-        await makeAllViewsPublic(acMgr.connect(admin), vault);
-
-        await setupAMRole(acMgr.connect(admin), vault, roles, "LP_ROLE", [
-          "withdraw",
-          "deposit",
-          "mint",
-          "redeem",
-          "transfer",
-        ]);
-        await setupAMRole(acMgr.connect(admin), vault, roles, "STRATEGY_ADMIN_ROLE", [
-          "addStrategy",
-          "replaceStrategy",
-          "removeStrategy",
-        ]);
-
-        await setupAMRole(acMgr.connect(admin), vault, roles, "QUEUE_ADMIN_ROLE", [
-          "changeDepositQueue",
-          "changeWithdrawQueue",
-        ]);
-
-        await setupAMRole(acMgr.connect(admin), vault, roles, "REBALANCER_ROLE", ["rebalance"]);
-
-        await setupAMRole(acMgr.connect(admin), vault, roles, "FORWARD_TO_STRATEGY_ROLE", ["forwardToStrategy"]);
-
+        const vault = await deployAMPProxy(
+          OutflowLimitedAMMSV,
+          [
+            NAME,
+            SYMB,
+            await ethers.resolveAddress(currency),
+            await Promise.all(strategies_.map(ethers.resolveAddress)),
+            initStrategyDatas,
+            depositQueue,
+            withdrawQueue,
+          ],
+          {
+            kind: "uups",
+            unsafeAllow: ["delegatecall"],
+            acMgr,
+            skipViewsAndPure: true,
+          }
+        );
+        await makeAllPublic(vault, acMgr.connect(admin));
         await vault.connect(admin).setupOutflowLimit(3600 * 24, _A(1000));
-
         return {
           vault,
         };
       }
 
-      async function grantRole(_, role, user) {
-        const roleId = role.startsWith("0x") ? role : roles[role];
-        if (roleId === undefined) throw new Error(`Unknown role ${role}`);
-        await acMgr.connect(admin).grantRole(roleId, user, 0);
-      }
-
       async function grantForwardToStrategy(vault, strategyIndex, method, user) {
-        await acMgr.connect(admin).grantRole(roles.FORWARD_TO_STRATEGY_ROLE, user, 0);
         const specificSelector = await vault.getForwardToStrategySelector(strategyIndex, method);
         await acMgr.connect(admin).setTargetFunctionRole(vault, [specificSelector], specificSelector);
         await acMgr.connect(admin).grantRole(specificSelector, user, 0);
@@ -154,7 +104,6 @@ const variants = [
 
       return {
         deployVault,
-        grantRole,
         grantForwardToStrategy,
         acMgr,
         OutflowLimitedAMMSV,
@@ -187,11 +136,10 @@ variants.forEach((variant) => {
     });
 
     it("Handles withdrawal limits correctly for multiple LPs and ensures limits are respected across time periods", async () => {
-      const { deployVault, lp, lp2, currency, grantRole } = await helpers.loadFixture(variant.fixture);
+      const { deployVault, lp, lp2, currency } = await helpers.loadFixture(variant.fixture);
       const { vault } = await deployVault(4, undefined, [3, 2, 1, 0], [2, 0, 3, 1]);
 
       await currency.connect(lp).approve(vault, MaxUint256);
-      await grantRole(vault, "LP_ROLE", lp);
 
       await expect(vault.connect(lp).deposit(_A(4000), lp)).not.to.be.reverted;
 
@@ -203,7 +151,6 @@ variants.forEach((variant) => {
       await expect(vault.connect(lp).withdraw(_A(2000), lp, lp)).to.be.revertedWithCustomError(vault, "LimitReached");
 
       await currency.connect(lp2).approve(vault, MaxUint256);
-      await grantRole(vault, "LP_ROLE", lp2);
 
       await expect(vault.connect(lp2).deposit(_A(2000), lp2)).not.to.be.reverted;
       await expect(vault.connect(lp2).withdraw(_A(400), lp2, lp2)).not.to.be.reverted;
@@ -225,11 +172,10 @@ variants.forEach((variant) => {
     });
 
     it("Respects withdrawal limits and resets daily limit after time advancement", async () => {
-      const { deployVault, lp, currency, grantRole } = await helpers.loadFixture(variant.fixture);
+      const { deployVault, lp, currency } = await helpers.loadFixture(variant.fixture);
       const { vault } = await deployVault(4, undefined, [3, 2, 1, 0], [2, 0, 3, 1]);
 
       await currency.connect(lp).approve(vault, MaxUint256);
-      await grantRole(vault, "LP_ROLE", lp);
 
       await expect(vault.connect(lp).deposit(_A(5000), lp)).not.to.be.reverted;
 
@@ -258,11 +204,10 @@ variants.forEach((variant) => {
     });
 
     it("Prevents withdrawal when combined daily limits from consecutive slots are surpassed", async () => {
-      const { deployVault, lp, currency, grantRole } = await helpers.loadFixture(variant.fixture);
+      const { deployVault, lp, currency } = await helpers.loadFixture(variant.fixture);
       const { vault } = await deployVault(4, undefined, [3, 2, 1, 0], [2, 0, 3, 1]);
 
       await currency.connect(lp).approve(vault, MaxUint256);
-      await grantRole(vault, "LP_ROLE", lp);
 
       await expect(vault.connect(lp).deposit(_A(5000), lp)).not.to.be.reverted;
 
@@ -293,11 +238,10 @@ variants.forEach((variant) => {
     });
 
     it("Prevents withdrawal for consecutive daily limits, but forgets two days ago withdrawals", async () => {
-      const { deployVault, lp, currency, grantRole } = await helpers.loadFixture(variant.fixture);
+      const { deployVault, lp, currency } = await helpers.loadFixture(variant.fixture);
       const { vault } = await deployVault(4, undefined, [3, 2, 1, 0], [2, 0, 3, 1]);
 
       await currency.connect(lp).approve(vault, MaxUint256);
-      await grantRole(vault, "LP_ROLE", lp);
 
       await expect(vault.connect(lp).deposit(_A(5000), lp)).not.to.be.reverted;
 
@@ -317,11 +261,10 @@ variants.forEach((variant) => {
     });
 
     it("Checks that change in slot size resets the limits", async () => {
-      const { deployVault, lp, currency, grantRole, admin } = await helpers.loadFixture(variant.fixture);
+      const { deployVault, lp, currency, admin } = await helpers.loadFixture(variant.fixture);
       const { vault } = await deployVault(4, undefined, [3, 2, 1, 0], [2, 0, 3, 1]);
 
       await currency.connect(lp).approve(vault, MaxUint256);
-      await grantRole(vault, "LP_ROLE", lp);
 
       await expect(vault.connect(lp).deposit(_A(5000), lp)).not.to.be.reverted;
 
@@ -346,11 +289,10 @@ variants.forEach((variant) => {
     });
 
     it("Allows accumulated withdrawals up to the daily limit and prevents exceeding it", async () => {
-      const { deployVault, lp, currency, grantRole } = await helpers.loadFixture(variant.fixture);
+      const { deployVault, lp, currency } = await helpers.loadFixture(variant.fixture);
       const { vault } = await deployVault(4, undefined, [3, 2, 1, 0], [2, 0, 3, 1]);
 
       await currency.connect(lp).approve(vault, MaxUint256);
-      await grantRole(vault, "LP_ROLE", lp);
 
       const slotSize = DAY;
       let now = await helpers.time.latest();
@@ -385,11 +327,10 @@ variants.forEach((variant) => {
     });
 
     it("Allows accumulated withdrawals up to the daily limit and prevents exceeding it - mint/redeem", async () => {
-      const { deployVault, lp, currency, grantRole, strategies } = await helpers.loadFixture(variant.fixture);
+      const { deployVault, lp, currency, strategies } = await helpers.loadFixture(variant.fixture);
       const { vault } = await deployVault(4, undefined, [3, 2, 1, 0], [2, 0, 3, 1]);
 
       await currency.connect(lp).approve(vault, MaxUint256);
-      await grantRole(vault, "LP_ROLE", lp);
 
       const slotSize = DAY;
       let now = await helpers.time.latest();
@@ -429,11 +370,10 @@ variants.forEach((variant) => {
     });
 
     it("Allows accumulated withdrawals up to the daily limit and prevents exceeding it - mint/redeem/deposit/withdraw", async () => {
-      const { deployVault, lp, currency, grantRole, strategies } = await helpers.loadFixture(variant.fixture);
+      const { deployVault, lp, currency, strategies } = await helpers.loadFixture(variant.fixture);
       const { vault } = await deployVault(4, undefined, [3, 2, 1, 0], [2, 0, 3, 1]);
 
       await currency.connect(lp).approve(vault, MaxUint256);
-      await grantRole(vault, "LP_ROLE", lp);
 
       const slotSize = DAY;
       let now = await helpers.time.latest();

@@ -40,6 +40,7 @@ module.exports = {
       "@ensuro/utils/contracts/TestCurrency.sol",
       "@ensuro/utils/contracts/TestERC4626.sol",
       "@ensuro/swaplibrary/contracts/mocks/SwapRouterMock.sol",
+      "@ensuro/access-managed-proxy/contracts/AccessManagedProxy.sol",
       "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol",
       "@openzeppelin/contracts/access/manager/AccessManager.sol",
     ],
