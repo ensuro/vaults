@@ -41,31 +41,6 @@ async function setUp() {
   const AccessManager = await ethers.getContractFactory("AccessManager");
   const acMgr = await AccessManager.deploy(admin);
 
-  async function setupVault(asset, strategies_, initStrategyDatas, depositQueue, withdrawQueue) {
-    const vault = await deployAMPProxy(
-      AccessManagedMSV,
-      [
-        NAME,
-        SYMB,
-        await ethers.resolveAddress(asset),
-        await Promise.all(strategies_.map(ethers.resolveAddress)),
-        initStrategyDatas,
-        depositQueue,
-        withdrawQueue,
-      ],
-      {
-        kind: "uups",
-        unsafeAllow: ["delegatecall"],
-        acMgr,
-        skipViewsAndPure: true,
-      }
-    );
-    await makeAllPublic(vault, acMgr.connect(admin));
-    await asset.connect(lp).approve(vault, MaxUint256);
-    await asset.connect(lp2).approve(vault, MaxUint256);
-    return vault;
-  }
-
   return {
     USDC,
     IdleInvestStrategy,
@@ -79,14 +54,59 @@ async function setUp() {
     guardian,
     admin,
     investVault,
-    setupVault,
+    AccessManagedMSV,
+    acMgr,
   };
+}
+
+async function setupVault({
+  asset,
+  strategies,
+  initStrategyDatas,
+  depositQueue,
+  withdrawQueue,
+  admin,
+  acMgr,
+  AccessManagedMSV,
+  lps,
+}) {
+  const vault = await deployAMPProxy(
+    AccessManagedMSV,
+    [
+      NAME,
+      SYMB,
+      await ethers.resolveAddress(asset),
+      await Promise.all(strategies.map(ethers.resolveAddress)),
+      initStrategyDatas,
+      depositQueue,
+      withdrawQueue,
+    ],
+    {
+      kind: "uups",
+      unsafeAllow: ["delegatecall"],
+      acMgr,
+      skipViewsAndPure: true,
+    }
+  );
+  await makeAllPublic(vault, acMgr.connect(admin));
+  await Promise.all(lps.map((lp) => asset.connect(lp).approve(vault, MaxUint256)));
+  return vault;
 }
 
 async function setUpIdleOnly() {
   const ret = await setUp();
   const strategy = await ret.IdleInvestStrategy.deploy(ret.USDC);
-  const vault = await ret.setupVault(ret.USDC, [strategy], [ethers.toUtf8Bytes("")], [0], [0]);
+  const vault = await setupVault({
+    asset: ret.USDC,
+    strategies: [strategy],
+    initStrategyDatas: [ethers.toUtf8Bytes("")],
+    depositQueue: [0],
+    withdrawQueue: [0],
+    admin: ret.admin,
+    acMgr: ret.acMgr,
+    AccessManagedMSV: ret.AccessManagedMSV,
+    lps: [ret.lp, ret.lp2],
+  });
   return { ...ret, vault, strategy };
 }
 
@@ -94,13 +114,17 @@ async function setUpMultiStrategies() {
   const ret = await setUp();
   const strategy = await ret.IdleInvestStrategy.deploy(ret.USDC);
   const erc4626strategy = await ret.ERC4626InvestStrategy.deploy(ret.investVault);
-  const vault = await ret.setupVault(
-    ret.USDC,
-    [erc4626strategy, strategy],
-    [ethers.toUtf8Bytes(""), ethers.toUtf8Bytes("")],
-    [0, 1],
-    [1, 0] // withdraw first from strategy
-  );
+  const vault = await setupVault({
+    asset: ret.USDC,
+    strategies: [erc4626strategy, strategy],
+    initStrategyDatas: [ethers.toUtf8Bytes(""), ethers.toUtf8Bytes("")],
+    depositQueue: [0, 1],
+    withdrawQueue: [1, 0], // withdraw first from strategy
+    admin: ret.admin,
+    acMgr: ret.acMgr,
+    AccessManagedMSV: ret.AccessManagedMSV,
+    lps: [ret.lp, ret.lp2],
+  });
   return { ...ret, vault, strategy, erc4626strategy };
 }
 

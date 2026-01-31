@@ -2,7 +2,7 @@ const { expect } = require("chai");
 const { amountFunction, _W, getTransactionEvent, tagitVariant } = require("@ensuro/utils/js/utils");
 const { initForkCurrency, setupChain } = require("@ensuro/utils/js/test-utils");
 const { buildUniswapConfig } = require("@ensuro/swaplibrary/js/utils");
-const { encodeSwapConfig, encodeDummyStorage, makeAllPublic } = require("./utils");
+const { encodeSwapConfig, encodeDummyStorage, makeAllPublic, grantOperationAccess } = require("./utils");
 const { deployAMPProxy } = require("@ensuro/access-managed-proxy/js/deployProxy");
 const { anyUint } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 const hre = require("hardhat");
@@ -190,12 +190,6 @@ async function deployVault({
   await Promise.all(lps.map((lp) => currency.connect(lp).approve(vault, MaxUint256)));
 
   return { acMgr, AccessManager, AccessManagedMSV, vault };
-}
-
-async function grantOperationAccess(_hre, operation, vault, admin, user, acMgr) {
-  const specificSelector = await vault.getForwardToStrategySelector(0, operation);
-  await acMgr.connect(admin).setTargetFunctionRole(vault, [specificSelector], specificSelector);
-  await acMgr.connect(admin).grantRole(specificSelector, user, 0);
 }
 
 const variants = [
@@ -471,7 +465,7 @@ variants.forEach((variant) => {
       ).to.be.revertedWithCustomError(strategy, "CannotDisconnectWithAssets");
 
       // If I hardvest the rewards, it works
-      await grantOperationAccess(hre, CompoundV3StrategyMethods.harvestRewards, vault, admin, anon, acMgr);
+      await grantOperationAccess(vault, 0, CompoundV3StrategyMethods.harvestRewards, admin, anon, acMgr);
       const tx = await variant.harvestRewards(vault.connect(anon), _W("0.011833165"));
       await expect(tx).not.to.be.reverted;
       await expect(vault.connect(anon).replaceStrategy(0, dummyStrategy, encodeDummyStorage({}), false))
@@ -512,7 +506,7 @@ variants.forEach((variant) => {
       await expect(vault.connect(lp).mint(_A(3000), lp)).not.to.be.reverted;
 
       if (variant.name !== "SwapStableAAVEV3Strategy") {
-        await grantOperationAccess(hre, CompoundV3StrategyMethods.harvestRewards, vault, admin, anon, acMgr);
+        await grantOperationAccess(vault, 0, CompoundV3StrategyMethods.harvestRewards, admin, anon, acMgr);
       }
 
       await helpers.time.increase(MONTH);
@@ -528,11 +522,11 @@ variants.forEach((variant) => {
 
       if (variant.name !== "SwapStableAAVEV3Strategy") {
         await expect(variant.setSwapConfig(vault.connect(anon), swapConfig)).to.be.revertedWithAMError(vault, anon);
-        await grantOperationAccess(hre, CompoundV3StrategyMethods.setSwapConfig, vault, admin, anon, acMgr);
+        await grantOperationAccess(vault, 0, CompoundV3StrategyMethods.setSwapConfig, admin, anon, acMgr);
       } else {
         // SwapStableAAVEV3Strategy uses AccessManagedMSV
         await expect(variant.setSwapConfig(vault.connect(anon), swapConfig)).to.be.revertedWithAMError(vault, anon);
-        await grantOperationAccess(hre, SwapStableAaveV3InvestStrategyMethods.setSwapConfig, vault, admin, anon, acMgr);
+        await grantOperationAccess(vault, 0, SwapStableAaveV3InvestStrategyMethods.setSwapConfig, admin, anon, acMgr);
       }
 
       // Check validates new config

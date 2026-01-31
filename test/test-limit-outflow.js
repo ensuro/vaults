@@ -44,6 +44,59 @@ async function setUp() {
   };
 }
 
+async function createVault({
+  vaultClass,
+  currency,
+  admin,
+  strategies,
+  acMgr,
+  strategies_,
+  initStrategyDatas,
+  depositQueue,
+  withdrawQueue,
+  setupOutflowLimit,
+}) {
+  if (strategies_ === undefined) {
+    strategies_ = strategies;
+  } else if (typeof strategies_ == "number") {
+    strategies_ = strategies.slice(0, strategies_);
+  }
+  if (initStrategyDatas === undefined) {
+    initStrategyDatas = strategies_.map(() => encodeDummyStorage({}));
+  }
+  if (depositQueue === undefined) {
+    depositQueue = strategies_.map((_, i) => i);
+  }
+  if (withdrawQueue === undefined) {
+    withdrawQueue = strategies_.map((_, i) => i);
+  }
+  const vault = await deployAMPProxy(
+    vaultClass,
+    [
+      NAME,
+      SYMB,
+      await ethers.resolveAddress(currency),
+      await Promise.all(strategies_.map(ethers.resolveAddress)),
+      initStrategyDatas,
+      depositQueue,
+      withdrawQueue,
+    ],
+    {
+      kind: "uups",
+      unsafeAllow: ["delegatecall"],
+      acMgr,
+      skipViewsAndPure: true,
+    }
+  );
+  await makeAllPublic(vault, acMgr.connect(admin));
+  if (setupOutflowLimit) {
+    await vault.connect(admin).setupOutflowLimit(setupOutflowLimit.slotSize, setupOutflowLimit.limit);
+  }
+  return {
+    vault,
+  };
+}
+
 const variants = [
   {
     name: "AMProxy+OutflowLimitedAMMSV",
@@ -56,55 +109,23 @@ const variants = [
       const AccessManager = await ethers.getContractFactory("AccessManager");
       const acMgr = await AccessManager.deploy(admin);
 
-      async function deployVault(strategies_, initStrategyDatas, depositQueue, withdrawQueue) {
-        if (strategies_ === undefined) {
-          strategies_ = strategies;
-        } else if (typeof strategies_ == "number") {
-          strategies_ = strategies.slice(0, strategies_);
-        }
-        if (initStrategyDatas === undefined) {
-          initStrategyDatas = strategies_.map(() => encodeDummyStorage({}));
-        }
-        if (depositQueue === undefined) {
-          depositQueue = strategies_.map((_, i) => i);
-        }
-        if (withdrawQueue === undefined) {
-          withdrawQueue = strategies_.map((_, i) => i);
-        }
-        const vault = await deployAMPProxy(
-          OutflowLimitedAMMSV,
-          [
-            NAME,
-            SYMB,
-            await ethers.resolveAddress(currency),
-            await Promise.all(strategies_.map(ethers.resolveAddress)),
-            initStrategyDatas,
-            depositQueue,
-            withdrawQueue,
-          ],
-          {
-            kind: "uups",
-            unsafeAllow: ["delegatecall"],
-            acMgr,
-            skipViewsAndPure: true,
-          }
-        );
-        await makeAllPublic(vault, acMgr.connect(admin));
-        await vault.connect(admin).setupOutflowLimit(3600 * 24, _A(1000));
-        return {
-          vault,
-        };
-      }
-
-      async function grantForwardToStrategy(vault, strategyIndex, method, user) {
-        const specificSelector = await vault.getForwardToStrategySelector(strategyIndex, method);
-        await acMgr.connect(admin).setTargetFunctionRole(vault, [specificSelector], specificSelector);
-        await acMgr.connect(admin).grantRole(specificSelector, user, 0);
+      async function deployVaultFn(strategies_, initStrategyDatas, depositQueue, withdrawQueue) {
+        return createVault({
+          vaultClass: OutflowLimitedAMMSV,
+          currency,
+          admin,
+          strategies,
+          acMgr,
+          strategies_,
+          initStrategyDatas,
+          depositQueue,
+          withdrawQueue,
+          setupOutflowLimit: { slotSize: 3600 * 24, limit: _A(1000) },
+        });
       }
 
       return {
-        deployVault,
-        grantForwardToStrategy,
+        deployVault: deployVaultFn,
         acMgr,
         OutflowLimitedAMMSV,
         ...ret,

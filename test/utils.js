@@ -25,9 +25,16 @@ async function makeAllPublic(contract, accessManager) {
   await accessManager.setTargetFunctionRole(contract, selectors, PUBLIC_ROLE);
 }
 
+async function grantOperationAccess(vault, strategyIndex, method, admin, user, acMgr) {
+  const specificSelector = await vault.getForwardToStrategySelector(strategyIndex, method);
+  await acMgr.connect(admin).setTargetFunctionRole(vault, [specificSelector], specificSelector);
+  await acMgr.connect(admin).grantRole(specificSelector, user, 0);
+}
+
 module.exports = {
   encodeDummyStorage,
   encodeSwapConfig,
   dummyStorage,
   makeAllPublic,
+  grantOperationAccess,
 };
