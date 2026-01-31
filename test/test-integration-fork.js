@@ -1,8 +1,9 @@
 const { expect } = require("chai");
-const { amountFunction, _W, getRole, grantRole } = require("@ensuro/utils/js/utils");
+const { amountFunction, _W } = require("@ensuro/utils/js/utils");
 const { initForkCurrency, setupChain } = require("@ensuro/utils/js/test-utils");
 const { buildUniswapConfig } = require("@ensuro/swaplibrary/js/utils");
-const { encodeSwapConfig } = require("./utils");
+const { encodeSwapConfig, makeAllPublic } = require("./utils");
+const { deployAMPProxy } = require("@ensuro/access-managed-proxy/js/deployProxy");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
@@ -72,13 +73,14 @@ async function setUp() {
   const compoundStrategy = await CompoundV3InvestStrategy.deploy(ADDRESSES.cUSDCv3, ADDRESSES.REWARDS);
   const AaveV3InvestStrategy = await ethers.getContractFactory("AaveV3InvestStrategy");
   const aaveStrategy = await AaveV3InvestStrategy.deploy(ADDRESSES.USDC, ADDRESSES.AAVEv3);
-  const MultiStrategyERC4626 = await ethers.getContractFactory("MultiStrategyERC4626");
-  const vault = await hre.upgrades.deployProxy(
-    MultiStrategyERC4626,
+  const AccessManagedMSV = await ethers.getContractFactory("AccessManagedMSV");
+  const AccessManager = await ethers.getContractFactory("AccessManager");
+  const acMgr = await AccessManager.deploy(admin);
+  const vault = await deployAMPProxy(
+    AccessManagedMSV,
     [
       NAME,
       SYMB,
-      adminAddr,
       await ethers.resolveAddress(currency),
       await Promise.all([aaveStrategy, compoundStrategy].map(ethers.resolveAddress)),
       [ethers.toUtf8Bytes(""), encodeSwapConfig(swapConfig)],
@@ -88,13 +90,13 @@ async function setUp() {
     {
       kind: "uups",
       unsafeAllow: ["delegatecall"],
+      acMgr,
+      skipViewsAndPure: true,
     }
   );
+  await makeAllPublic(vault, acMgr.connect(admin));
   await currency.connect(lp).approve(vault, MaxUint256);
   await currency.connect(lp2).approve(vault, MaxUint256);
-  await grantRole(hre, vault.connect(admin), "LP_ROLE", lp);
-  await grantRole(hre, vault.connect(admin), "LP_ROLE", lp2);
-  await grantRole(hre, vault.connect(admin), "REBALANCER_ROLE", admin);
 
   const COMPPrice = await ethers.getContractAt(ChainlinkABI, ADDRESSES.COMP_CHAINLINK);
 
@@ -110,11 +112,12 @@ async function setUp() {
     swapLibrary,
     CompoundV3InvestStrategy,
     AaveV3InvestStrategy,
-    MultiStrategyERC4626,
+    AccessManagedMSV,
     aaveStrategy,
     compoundStrategy,
     vault,
     COMPPrice,
+    acMgr,
   };
 }
 
@@ -129,7 +132,7 @@ describe("MultiStrategy Integration fork tests", function () {
   });
 
   it("Can perform a basic smoke test", async () => {
-    const { vault, currency, lp, lp2, admin, aaveStrategy, compoundStrategy, COMPPrice } =
+    const { vault, currency, lp, lp2, admin, aaveStrategy, compoundStrategy, COMPPrice, acMgr } =
       await helpers.loadFixture(setUp);
     expect(await vault.name()).to.equal(NAME);
     await vault.connect(lp).deposit(_A(5000), lp);
@@ -147,14 +150,12 @@ describe("MultiStrategy Integration fork tests", function () {
     expect(await compoundStrategy.totalAssets(vault)).to.closeTo(_A("7060.519644"), CENT);
     expect(await vault.totalAssets()).to.be.closeTo(_A("12121.644921"), CENT);
 
-    await vault.connect(admin).grantRole(getRole("HARVEST_ROLE"), admin);
-
     // Take the price from the oracle (8 decimals) and add 10 more to convert it to wad
     const compUSD = (await COMPPrice.latestRoundData())[1] * 10n ** 10n;
 
-    await vault.connect(admin).grantRole(getRole("FORWARD_TO_STRATEGY_ROLE"), admin);
-    const specificRole = await vault.getForwardToStrategyRole(1, CompoundV3StrategyMethods.harvestRewards);
-    await vault.connect(admin).grantRole(specificRole, admin);
+    const specificSelector = await vault.getForwardToStrategySelector(1, CompoundV3StrategyMethods.harvestRewards);
+    await acMgr.connect(admin).setTargetFunctionRole(vault, [specificSelector], specificSelector);
+    await acMgr.connect(admin).grantRole(specificSelector, admin, 0);
 
     await vault
       .connect(admin)

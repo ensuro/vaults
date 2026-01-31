@@ -5,10 +5,10 @@ import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.
 import {ERC1967Utils} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Utils.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {SwapLibrary} from "@ensuro/swaplibrary/contracts/SwapLibrary.sol";
-import {IInvestStrategy} from "./interfaces/IInvestStrategy.sol";
+import {IInvestStrategy} from "../interfaces/IInvestStrategy.sol";
 import {ChainlinkSwapAssetInvestStrategy} from "./ChainlinkSwapAssetInvestStrategy.sol";
-import {AggregatorV3Interface} from "./dependencies/chainlink/AggregatorV3Interface.sol";
-import {MSVBase} from "./MSVBase.sol";
+import {AggregatorV3Interface} from "../dependencies/chainlink/AggregatorV3Interface.sol";
+import {MSVBase} from "../MSVBase.sol";
 
 interface IMerklDistributor {
   function claim(

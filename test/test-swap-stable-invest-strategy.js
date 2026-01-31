@@ -1,5 +1,5 @@
 const { expect } = require("chai");
-const { amountFunction, _W, getRole, getTransactionEvent, tagitVariant } = require("@ensuro/utils/js/utils");
+const { amountFunction, _W, getTransactionEvent, tagitVariant } = require("@ensuro/utils/js/utils");
 const { buildUniswapConfig } = require("@ensuro/swaplibrary/js/utils");
 const { encodeSwapConfig, encodeDummyStorage } = require("./utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
@@ -32,7 +32,6 @@ async function setUp() {
       symbol: "USDA",
       decimals: 6,
       initial_supply: _A(50000),
-      extraArgs: [admin],
     },
     [lp, lp2, uniswapRouterMock],
     [_A(INITIAL), _A(INITIAL), _A(INITIAL * 3)]
@@ -43,7 +42,6 @@ async function setUp() {
       symbol: "USDB",
       decimals: 6,
       initial_supply: _A(50000),
-      extraArgs: [admin],
     },
     [lp, lp2, uniswapRouterMock],
     [_A(INITIAL), _A(INITIAL), _A(INITIAL * 3)]
@@ -54,7 +52,6 @@ async function setUp() {
       symbol: "USDM",
       decimals: 18,
       initial_supply: _W(50000),
-      extraArgs: [admin],
     },
     [lp, lp2, uniswapRouterMock],
     [_W(INITIAL), _W(INITIAL), _W(INITIAL * 3)]
@@ -65,7 +62,6 @@ async function setUp() {
       symbol: "USDX",
       decimals: 18,
       initial_supply: _W(50000),
-      extraArgs: [admin],
     },
     [lp, lp2, uniswapRouterMock],
     [_W(INITIAL), _W(INITIAL), _W(INITIAL * 3)]
@@ -99,7 +95,7 @@ async function setUp() {
   async function setupVault(asset, strategy, strategyData = encodeSwapConfig(swapConfig)) {
     const vault = await hre.upgrades.deployProxy(
       SingleStrategyERC4626,
-      [NAME, SYMB, adminAddr, await ethers.resolveAddress(asset), await ethers.resolveAddress(strategy), strategyData],
+      [NAME, SYMB, await ethers.resolveAddress(asset), await ethers.resolveAddress(strategy), strategyData],
       {
         kind: "uups",
         unsafeAllow: ["delegatecall"],
@@ -108,8 +104,6 @@ async function setUp() {
     // Whitelist LPs
     await asset.connect(lp).approve(vault, MaxUint256);
     await asset.connect(lp2).approve(vault, MaxUint256);
-    await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
-    await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp2);
     return vault;
   }
 
@@ -167,7 +161,9 @@ const variants = [
 ];
 
 variants.forEach((variant) => {
-  const it = (testDescription, test) => tagitVariant(variant, false, testDescription, test);
+  function it(testDescription, test) {
+    return tagitVariant(variant, false, testDescription, test);
+  }
   it.only = (testDescription, test) => tagitVariant(variant, true, testDescription, test);
 
   describe(`SwapStableInvestStrategy contract tests ${variant.name}`, function () {
@@ -300,7 +296,7 @@ variants.forEach((variant) => {
     });
 
     it("Checks onlyRole modifier & setSwapConfig function", async () => {
-      const { SwapStableInvestStrategy, currA, currB, anon, admin, swapConfig, setupVault, uniswapRouterMock } =
+      const { SwapStableInvestStrategy, currA, currB, anon, swapConfig, setupVault, uniswapRouterMock } =
         await variant.fixture();
       const strategy = await SwapStableInvestStrategy.deploy(currA, currB, _W(1));
       const vault = await setupVault(currA, strategy);
@@ -312,14 +308,6 @@ variants.forEach((variant) => {
         ["tuple(uint8, uint256, bytes, string)"],
         [modifiedSwapConfig]
       );
-
-      /// Access validations no longer implemented in the strategy they should be implemented in the vault
-      /// contract
-      ///    await expect(
-      ///      vault.connect(anon).forwardToStrategy(SwapStableInvestStrategyMethods.setSwapConfig, newSwapConfigAsBytes)
-      ///    ).to.be.revertedWithACError(strategy, anon, "SWAP_ADMIN_ROLE");
-      ///
-      ///    await vault.connect(admin).grantRole(await getRole("SWAP_ADMIN_ROLE"), anon);
 
       let tx = await vault
         .connect(anon)
@@ -339,15 +327,12 @@ variants.forEach((variant) => {
     });
 
     it("Should return the correct swap configuration", async () => {
-      const { SwapStableInvestStrategy, setupVault, currA, currB, admin, anon, uniswapRouterMock } =
-        await variant.fixture();
+      const { SwapStableInvestStrategy, setupVault, currA, currB, anon, uniswapRouterMock } = await variant.fixture();
       const strategy = await SwapStableInvestStrategy.deploy(currA, currB, _W(1));
       const vault = await setupVault(currA, strategy);
 
       const newSwapConfig = buildUniswapConfig(_W("0.001"), 200, uniswapRouterMock.target);
       const newSwapConfigAsBytes = encodeSwapConfig(newSwapConfig);
-
-      await vault.connect(admin).grantRole(await getRole("SWAP_ADMIN_ROLE"), anon);
 
       await vault.connect(anon).forwardToStrategy(SwapStableInvestStrategyMethods.setSwapConfig, newSwapConfigAsBytes);
 
@@ -355,14 +340,12 @@ variants.forEach((variant) => {
     });
 
     it("setStrategy should work and disconnect strategy when authorized", async function () {
-      const { SwapStableInvestStrategy, setupVault, currA, currB, anon, admin } = await variant.fixture();
+      const { SwapStableInvestStrategy, setupVault, currA, currB, anon } = await variant.fixture();
       const strategy = await SwapStableInvestStrategy.deploy(currA, currB, _W(1));
       const vault = await setupVault(currA, strategy);
 
       const DummyInvestStrategy = await ethers.getContractFactory("DummyInvestStrategy");
       const dummyStrategy = await DummyInvestStrategy.deploy(currA);
-
-      await vault.connect(admin).grantRole(getRole("SET_STRATEGY_ROLE"), anon);
 
       const tx = await vault.connect(anon).setStrategy(dummyStrategy, encodeDummyStorage({}), true);
 
@@ -370,28 +353,26 @@ variants.forEach((variant) => {
     });
 
     it("Disconnect doesn't fail when changing strategy", async function () {
-      const { SwapStableInvestStrategy, setupVault, currA, currB, lp, admin, _a } = await variant.fixture();
+      const { SwapStableInvestStrategy, setupVault, currA, currB, lp, _a } = await variant.fixture();
       const strategy = await SwapStableInvestStrategy.deploy(currA, currB, _W(1));
       const vault = await setupVault(currA, strategy);
 
       const DummyInvestStrategy = await ethers.getContractFactory("DummyInvestStrategy");
       const dummyStrategy = await DummyInvestStrategy.deploy(currA);
 
-      await vault.connect(admin).grantRole(getRole("SET_STRATEGY_ROLE"), lp);
       await vault.connect(lp).deposit(_a(100), lp);
 
       await expect(vault.connect(lp).setStrategy(dummyStrategy, encodeDummyStorage({}), false)).not.to.be.reverted;
     });
 
     it("Disconnect without assets doesn't revert", async function () {
-      const { SwapStableInvestStrategy, setupVault, currA, currB, lp, admin } = await variant.fixture();
+      const { SwapStableInvestStrategy, setupVault, currA, currB, lp } = await variant.fixture();
       const strategy = await SwapStableInvestStrategy.deploy(currA, currB, _W(1));
       const vault = await setupVault(currA, strategy);
 
       const DummyInvestStrategy = await ethers.getContractFactory("DummyInvestStrategy");
       const dummyStrategy = await DummyInvestStrategy.deploy(currA);
 
-      await vault.connect(admin).grantRole(getRole("SET_STRATEGY_ROLE"), lp);
       // Without assets, it doesn't revert
       await expect(vault.connect(lp).setStrategy(dummyStrategy, encodeDummyStorage({}), false)).not.to.be.reverted;
     });
@@ -400,7 +381,7 @@ variants.forEach((variant) => {
 
 describe("SwapStableInvestStrategy constructor tests", function () {
   it("It reverts when asset or invest asset has >18 decimals", async () => {
-    const [, , , admin] = await ethers.getSigners();
+    const [, , ,] = await ethers.getSigners();
     const SwapLibrary = await ethers.getContractFactory("SwapLibrary");
     const swapLibrary = await SwapLibrary.deploy();
     const SwapStableInvestStrategy = await ethers.getContractFactory("SwapStableInvestStrategy", {
@@ -413,14 +394,12 @@ describe("SwapStableInvestStrategy constructor tests", function () {
       symbol: "USD6",
       decimals: 6,
       initial_supply: _A(50000),
-      extraArgs: [admin],
     });
     const USD20 = await initCurrency({
       name: "Another test Currency with 20 decimals",
       symbol: "USD20",
       decimals: 20,
       initial_supply: _A(50000),
-      extraArgs: [admin],
     });
     await expect(SwapStableInvestStrategy.deploy(USD6, USD20, _W(1))).to.be.revertedWithCustomError(
       SwapStableInvestStrategy,

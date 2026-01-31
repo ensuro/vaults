@@ -1,5 +1,5 @@
 const { expect } = require("chai");
-const { amountFunction, getRole } = require("@ensuro/utils/js/utils");
+const { amountFunction } = require("@ensuro/utils/js/utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const { encodeDummyStorage, dummyStorage } = require("./utils");
 const hre = require("hardhat");
@@ -17,7 +17,7 @@ const SYMB = "SSV";
 async function setUp() {
   const [, lp, lp2, anon, guardian, admin] = await ethers.getSigners();
   const currency = await initCurrency(
-    { name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(50000), extraArgs: [admin] },
+    { name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(50000) },
     [lp, lp2],
     [_A(INITIAL), _A(INITIAL)]
   );
@@ -28,14 +28,7 @@ async function setUp() {
   const SingleStrategyERC4626 = await ethers.getContractFactory("SingleStrategyERC4626");
   const vault = await hre.upgrades.deployProxy(
     SingleStrategyERC4626,
-    [
-      NAME,
-      SYMB,
-      adminAddr,
-      await ethers.resolveAddress(currency),
-      await ethers.resolveAddress(strategy),
-      encodeDummyStorage({}),
-    ],
+    [NAME, SYMB, await ethers.resolveAddress(currency), await ethers.resolveAddress(strategy), encodeDummyStorage({})],
     {
       kind: "uups",
       unsafeAllow: ["delegatecall"],
@@ -43,9 +36,6 @@ async function setUp() {
   );
   await currency.connect(lp).approve(vault, MaxUint256);
   await currency.connect(lp2).approve(vault, MaxUint256);
-  await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
-  await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp2);
-  await vault.connect(admin).grantRole(getRole("GUARDIAN_ROLE"), guardian);
 
   return {
     currency,
@@ -74,14 +64,12 @@ describe("SingleStrategyERC4626 contract tests", function () {
   });
 
   it("Initialization fails if strategy connect fails", async () => {
-    const { SingleStrategyERC4626, strategy, currency, adminAddr, DummyInvestStrategy } =
-      await helpers.loadFixture(setUp);
+    const { SingleStrategyERC4626, strategy, currency, DummyInvestStrategy } = await helpers.loadFixture(setUp);
     const otherVault = hre.upgrades.deployProxy(
       SingleStrategyERC4626,
       [
         NAME,
         SYMB,
-        adminAddr,
         await ethers.resolveAddress(currency),
         await ethers.resolveAddress(strategy),
         encodeDummyStorage({ failConnect: true }),
@@ -95,14 +83,12 @@ describe("SingleStrategyERC4626 contract tests", function () {
   });
 
   it("Initialization fails if extra data is sent", async () => {
-    const { SingleStrategyERC4626, strategy, currency, adminAddr, DummyInvestStrategy } =
-      await helpers.loadFixture(setUp);
+    const { SingleStrategyERC4626, strategy, currency, DummyInvestStrategy } = await helpers.loadFixture(setUp);
     const otherVault = hre.upgrades.deployProxy(
       SingleStrategyERC4626,
       [
         NAME,
         SYMB,
-        adminAddr,
         await ethers.resolveAddress(currency),
         await ethers.resolveAddress(strategy),
         encodeDummyStorage({}) + "f".repeat(64),
@@ -145,26 +131,23 @@ describe("SingleStrategyERC4626 contract tests", function () {
   it("If disconnect fails it can't change the strategy unless forced", async () => {
     const { vault, strategy, admin, anon } = await helpers.loadFixture(setUp);
     await expect(vault.forwardToStrategy(0, encodeDummyStorage({ failDisconnect: true }))).not.to.be.reverted;
-    await expect(vault.connect(anon).setStrategy(strategy, encodeDummyStorage({}), false)).to.be.revertedWithACError(
-      vault,
-      anon,
-      "SET_STRATEGY_ROLE"
-    );
-    await vault.connect(admin).grantRole(getRole("SET_STRATEGY_ROLE"), anon);
     await expect(vault.connect(anon).setStrategy(strategy, encodeDummyStorage({}), false))
       .to.be.revertedWithCustomError(strategy, "Fail")
       .withArgs("disconnect");
-    await expect(vault.connect(anon).setStrategy(strategy, encodeDummyStorage({}), true)).to.emit(
+    await expect(vault.connect(admin).setStrategy(strategy, encodeDummyStorage({}), false))
+      .to.be.revertedWithCustomError(strategy, "Fail")
+      .withArgs("disconnect");
+    await expect(vault.connect(admin).setStrategy(strategy, encodeDummyStorage({}), true)).to.emit(
       vault,
       "DisconnectFailed"
     );
   });
 
   it("Initialization fails if strategy and vault have different assets", async () => {
-    const { SingleStrategyERC4626, DummyInvestStrategy, adminAddr, currency, admin } = await helpers.loadFixture(setUp);
+    const { SingleStrategyERC4626, DummyInvestStrategy, currency } = await helpers.loadFixture(setUp);
 
     const differentCurrency = await initCurrency(
-      { name: "Different USDC", symbol: "DUSDC", decimals: 6, initial_supply: _A(50000), extraArgs: [admin] },
+      { name: "Different USDC", symbol: "DUSDC", decimals: 6, initial_supply: _A(50000) },
       []
     );
 
@@ -176,7 +159,6 @@ describe("SingleStrategyERC4626 contract tests", function () {
         [
           NAME,
           SYMB,
-          adminAddr,
           await ethers.resolveAddress(currency),
           await ethers.resolveAddress(differentStrategy),
           encodeDummyStorage({}),
@@ -193,50 +175,14 @@ describe("SingleStrategyERC4626 contract tests", function () {
     const { vault, DummyInvestStrategy, admin, SingleStrategyERC4626 } = await helpers.loadFixture(setUp);
 
     const differentCurrency = await initCurrency(
-      { name: "Different USDC", symbol: "DUSDC", decimals: 6, initial_supply: _A(50000), extraArgs: [admin] },
+      { name: "Different USDC", symbol: "DUSDC", decimals: 6, initial_supply: _A(50000) },
       []
     );
 
     const differentStrategy = await DummyInvestStrategy.deploy(differentCurrency);
 
-    await vault.connect(admin).grantRole(getRole("SET_STRATEGY_ROLE"), admin);
-
     await expect(
       vault.connect(admin).setStrategy(differentStrategy, encodeDummyStorage({}), false)
     ).to.be.revertedWithCustomError(SingleStrategyERC4626, "InvalidStrategyAsset");
-  });
-
-  it("Checks only GUARDIAN_ROLE can upgrade", async () => {
-    const { vault, admin, guardian, SingleStrategyERC4626 } = await helpers.loadFixture(setUp);
-    const newImpl = await SingleStrategyERC4626.deploy();
-
-    await expect(vault.connect(admin).upgradeToAndCall(newImpl, "0x")).to.be.revertedWithACError(
-      vault,
-      admin,
-      "GUARDIAN_ROLE"
-    );
-    await expect(vault.connect(guardian).upgradeToAndCall(newImpl, "0x")).to.emit(vault, "Upgraded");
-  });
-
-  it("Checks only DEFAULT_ADMIN_ROLE can setRoleAdmin, then others can set specific roles", async () => {
-    const { vault, admin, guardian } = await helpers.loadFixture(setUp);
-
-    await expect(
-      vault.connect(guardian).setRoleAdmin(getRole("LP_ROLE"), getRole("LP_ROLE_ADMIN"))
-    ).to.be.revertedWithACError(vault, guardian, "DEFAULT_ADMIN_ROLE");
-
-    await expect(vault.connect(admin).setRoleAdmin(getRole("LP_ROLE"), getRole("LP_ROLE_ADMIN")))
-      .to.emit(vault, "RoleAdminChanged")
-      .withArgs(getRole("LP_ROLE"), getRole("DEFAULT_ADMIN_ROLE"), getRole("LP_ROLE_ADMIN"));
-
-    await expect(vault.connect(admin).grantRole(getRole("LP_ROLE"), guardian)).to.be.revertedWithACError(
-      vault,
-      admin,
-      "LP_ROLE_ADMIN"
-    );
-
-    await vault.connect(admin).grantRole(getRole("LP_ROLE_ADMIN"), guardian);
-
-    await expect(vault.connect(guardian).grantRole(getRole("LP_ROLE"), guardian)).to.emit(vault, "RoleGranted");
   });
 });

@@ -1,5 +1,5 @@
 const { expect } = require("chai");
-const { amountFunction, _W, getRole, tagitVariant } = require("@ensuro/utils/js/utils");
+const { amountFunction, _W, tagitVariant } = require("@ensuro/utils/js/utils");
 const { buildUniswapConfig } = require("@ensuro/swaplibrary/js/utils");
 const { encodeSwapConfig, encodeDummyStorage } = require("./utils");
 const { initForkCurrency, setupChain } = require("@ensuro/utils/js/test-utils");
@@ -88,7 +88,6 @@ async function setUp() {
       [
         NAME,
         SYMB,
-        adminAddr,
         await ethers.resolveAddress(assetAddress),
         await ethers.resolveAddress(strategyAddress),
         strategyData,
@@ -102,9 +101,6 @@ async function setUp() {
     const assetContract = await ethers.getContractAt("IERC20", assetAddress);
     await assetContract.connect(lp).approve(vault, MaxUint256);
     await assetContract.connect(lp2).approve(vault, MaxUint256);
-
-    await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp.address);
-    await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp2.address);
 
     return vault;
   }
@@ -157,7 +153,9 @@ const variants = [
 ];
 
 variants.forEach((variant) => {
-  const it = (testDescription, test) => tagitVariant(variant, false, testDescription, test);
+  function it(testDescription, test) {
+    return tagitVariant(variant, false, testDescription, test);
+  }
   it.only = (testDescription, test) => tagitVariant(variant, true, testDescription, test);
 
   describe(`SwapStableAaveV3InvestStrategy contract tests ${variant.name}`, function () {
@@ -250,14 +248,12 @@ variants.forEach((variant) => {
     });
 
     it("Should disconnect when strategy change & when authorized", async function () {
-      const { SwapStableAaveV3InvestStrategy, setupVault, currA, currB, anon, admin } = await variant.fixture();
+      const { SwapStableAaveV3InvestStrategy, setupVault, currA, currB, anon } = await variant.fixture();
       const strategy = await SwapStableAaveV3InvestStrategy.deploy(currA, currB, _W(1), ADDRESSES.AAVEv3);
       const vault = await setupVault(currA, strategy);
 
       const DummyInvestStrategy = await ethers.getContractFactory("DummyInvestStrategy");
       const dummyStrategy = await DummyInvestStrategy.deploy(currA);
-
-      await vault.connect(admin).grantRole(getRole("SET_STRATEGY_ROLE"), anon);
 
       const tx = await vault.connect(anon).setStrategy(dummyStrategy, encodeDummyStorage({}), true);
 
@@ -265,14 +261,13 @@ variants.forEach((variant) => {
     });
 
     it("Disconnect doesn't fail when changing strategy", async function () {
-      const { SwapStableAaveV3InvestStrategy, setupVault, currA, currB, lp, admin, _a } = await variant.fixture();
+      const { SwapStableAaveV3InvestStrategy, setupVault, currA, currB, lp, _a } = await variant.fixture();
       const strategy = await SwapStableAaveV3InvestStrategy.deploy(currA, currB, _W(1), ADDRESSES.AAVEv3);
       const vault = await setupVault(currA, strategy);
 
       const DummyInvestStrategy = await ethers.getContractFactory("DummyInvestStrategy");
       const dummyStrategy = await DummyInvestStrategy.deploy(currA);
 
-      await vault.connect(admin).grantRole(getRole("SET_STRATEGY_ROLE"), lp);
       await vault.connect(lp).deposit(_a(100), lp);
 
       await expect(vault.connect(lp).setStrategy(dummyStrategy, encodeDummyStorage({}), false)).not.to.be.reverted;

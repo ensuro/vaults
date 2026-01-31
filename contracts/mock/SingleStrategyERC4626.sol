@@ -7,7 +7,9 @@ import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {StorageSlot} from "@openzeppelin/contracts/utils/StorageSlot.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
-import {PermissionedERC4626} from "../PermissionedERC4626.sol";
+import {ERC4626Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
+import {ERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IInvestStrategy} from "../interfaces/IInvestStrategy.sol";
 import {IExposeStorage} from "../interfaces/IExposeStorage.sol";
 import {InvestStrategyClient} from "../InvestStrategyClient.sol";
@@ -28,12 +30,10 @@ import {InvestStrategyClient} from "../InvestStrategyClient.sol";
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
-contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
+contract SingleStrategyERC4626 is ERC4626Upgradeable, UUPSUpgradeable, IExposeStorage {
   using SafeERC20 for IERC20Metadata;
   using Address for address;
   using InvestStrategyClient for IInvestStrategy;
-
-  bytes32 public constant SET_STRATEGY_ROLE = keccak256("SET_STRATEGY_ROLE");
 
   IInvestStrategy internal _strategy;
 
@@ -55,7 +55,6 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
    *
    * @param name_ Name of the ERC20/ERC4626 token
    * @param symbol_ Symbol of the ERC20/ERC4626 token
-   * @param admin_ User that will receive the DEFAULT_ADMIN_ROLE and later can assign other permissions.
    * @param asset_ The asset() of the ERC4626
    * @param strategy_ The IInvestStrategy that will be used to manage the funds received.
    * @param initStrategyData Initialization data that will be sent to the IInvestStrategy
@@ -63,24 +62,23 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
   function initialize(
     string memory name_,
     string memory symbol_,
-    address admin_,
     IERC20 asset_,
     IInvestStrategy strategy_,
     bytes memory initStrategyData
   ) public virtual initializer {
-    __SingleStrategyERC4626_init(name_, symbol_, admin_, asset_, strategy_, initStrategyData);
+    __SingleStrategyERC4626_init(name_, symbol_, asset_, strategy_, initStrategyData);
   }
 
   // solhint-disable-next-line func-name-mixedcase
   function __SingleStrategyERC4626_init(
     string memory name_,
     string memory symbol_,
-    address admin_,
     IERC20 asset_,
     IInvestStrategy strategy_,
     bytes memory initStrategyData
   ) internal onlyInitializing {
-    __PermissionedERC4626_init(name_, symbol_, admin_, asset_);
+    __ERC20_init(name_, symbol_);
+    __ERC4626_init(asset_);
     __SingleStrategyERC4626_init_unchained(strategy_, initStrategyData);
   }
 
@@ -180,11 +178,7 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
    *              this value in `false`. Only use `true` if you know what you are doing and trying to replace a faulty
    *              strategy.
    */
-  function setStrategy(
-    IInvestStrategy newStrategy,
-    bytes memory initStrategyData,
-    bool force
-  ) external onlyRole(SET_STRATEGY_ROLE) {
+  function setStrategy(IInvestStrategy newStrategy, bytes memory initStrategyData, bool force) external {
     InvestStrategyClient.strategyChange(_strategy, newStrategy, initStrategyData, IERC20Metadata(asset()), force);
     _strategy = newStrategy;
   }
@@ -195,6 +189,8 @@ contract SingleStrategyERC4626 is PermissionedERC4626, IExposeStorage {
   function strategy() external view returns (IInvestStrategy) {
     return _strategy;
   }
+
+  function _authorizeUpgrade(address newImplementation) internal override {}
 
   /**
    * @dev This empty reserved space is put in place to allow future versions to add new

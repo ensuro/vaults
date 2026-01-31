@@ -18,10 +18,11 @@
     "solhint-plugin-prettier": "0.1.0"
   },
   "dependencies": {
-    "@ensuro/utils": "^0.2.9",
-    "@ensuro/swaplibrary": "1.0.0",
-    "@openzeppelin/contracts": "^5.1.0",
-    "@openzeppelin/contracts-upgradeable": "^5.1.0",
+    "@ensuro/access-managed-proxy": "^0.3.0",
+    "@ensuro/swaplibrary": "^1.0.0",
+    "@ensuro/utils": "^0.3.1",
+    "@openzeppelin/contracts": "^5.5.0",
+    "@openzeppelin/contracts-upgradeable": "^5.5.0",
     "@uniswap/v3-periphery": "^1.4.4",
     "hardhat-dependency-compiler": "^1.2.1",
     "solidity-bytes-utils": "^0.8.2"

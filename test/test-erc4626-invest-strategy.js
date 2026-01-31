@@ -1,5 +1,5 @@
 const { expect } = require("chai");
-const { amountFunction, getRole } = require("@ensuro/utils/js/utils");
+const { amountFunction } = require("@ensuro/utils/js/utils");
 const { encodeDummyStorage } = require("./utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const hre = require("hardhat");
@@ -33,7 +33,6 @@ async function setUp() {
       symbol: "USDC",
       decimals: 6,
       initial_supply: _A(50000),
-      extraArgs: [admin],
     },
     [lp, lp2],
     [_A(INITIAL), _A(INITIAL)]
@@ -46,14 +45,10 @@ async function setUp() {
   const TestERC4626 = await ethers.getContractFactory("TestERC4626");
   const investVault = await TestERC4626.deploy("Some vault", "VAULT", USDC);
 
-  // Grant roles to the test vault, so it can mint/burn earnings/losses
-  await USDC.connect(admin).grantRole(getRole("MINTER_ROLE"), investVault);
-  await USDC.connect(admin).grantRole(getRole("BURNER_ROLE"), investVault);
-
   async function setupVault(asset, strategy, strategyData = ethers.toUtf8Bytes("")) {
     const vault = await hre.upgrades.deployProxy(
       SingleStrategyERC4626,
-      [NAME, SYMB, adminAddr, await ethers.resolveAddress(asset), await ethers.resolveAddress(strategy), strategyData],
+      [NAME, SYMB, await ethers.resolveAddress(asset), await ethers.resolveAddress(strategy), strategyData],
       {
         kind: "uups",
         unsafeAllow: ["delegatecall"],
@@ -62,8 +57,6 @@ async function setUp() {
     // Whitelist LPs
     await asset.connect(lp).approve(vault, MaxUint256);
     await asset.connect(lp2).approve(vault, MaxUint256);
-    await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp);
-    await vault.connect(admin).grantRole(getRole("LP_ROLE"), lp2);
     return vault;
   }
 
@@ -194,8 +187,7 @@ describe("ERC4626InvestStrategy contract tests", function () {
   });
 
   it("Verifies an investVault with a different asset doesn't work", async () => {
-    const { setupVault, investVault, admin, SingleStrategyERC4626, ERC4626InvestStrategy } =
-      await helpers.loadFixture(setUp);
+    const { setupVault, investVault, SingleStrategyERC4626, ERC4626InvestStrategy } = await helpers.loadFixture(setUp);
     const strategy = await ERC4626InvestStrategy.deploy(investVault);
     const EURC = await initCurrency(
       {
@@ -203,7 +195,6 @@ describe("ERC4626InvestStrategy contract tests", function () {
         symbol: "EURC",
         decimals: 6,
         initial_supply: _A(50000),
-        extraArgs: [admin],
       },
       [],
       []
@@ -229,8 +220,6 @@ describe("ERC4626InvestStrategy contract tests", function () {
     await vault.connect(lp).deposit(_A(100), lp);
 
     const dummy = await DummyInvestStrategy.deploy(USDC);
-
-    await vault.connect(admin).grantRole(getRole("SET_STRATEGY_ROLE"), admin);
 
     expect(await investVault.totalAssets()).to.equal(_A(100));
     expect(await strategy.totalAssets(vault)).to.equal(_A(100));
@@ -267,8 +256,6 @@ describe("ERC4626InvestStrategy contract tests", function () {
     await vault.connect(lp).deposit(_A(100), lp);
 
     const dummy = await DummyInvestStrategy.deploy(USDC);
-
-    await vault.connect(admin).grantRole(getRole("SET_STRATEGY_ROLE"), admin);
 
     await investVault.discreteEarning(-_A(100));
     expect(await vault.totalAssets()).to.equal(_A(0));

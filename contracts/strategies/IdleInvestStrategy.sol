@@ -2,8 +2,8 @@
 pragma solidity ^0.8.0;
 
 import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
-import {IInvestStrategy} from "./interfaces/IInvestStrategy.sol";
-import {InvestStrategyClient} from "./InvestStrategyClient.sol";
+import {IInvestStrategy} from "../interfaces/IInvestStrategy.sol";
+import {InvestStrategyClient} from "../InvestStrategyClient.sol";
 
 /**
  * @title IdleInvestStrategy

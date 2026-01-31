@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
-import {IPool} from "./dependencies/aave-v3/IPool.sol";
-import {DataTypes} from "./dependencies/aave-v3/DataTypes.sol";
-import {ReserveConfiguration} from "./dependencies/aave-v3/ReserveConfiguration.sol";
+import {IPool} from "../dependencies/aave-v3/IPool.sol";
+import {DataTypes} from "../dependencies/aave-v3/DataTypes.sol";
+import {ReserveConfiguration} from "../dependencies/aave-v3/ReserveConfiguration.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
-import {IInvestStrategy} from "./interfaces/IInvestStrategy.sol";
-import {InvestStrategyClient} from "./InvestStrategyClient.sol";
+import {IInvestStrategy} from "../interfaces/IInvestStrategy.sol";
+import {InvestStrategyClient} from "../InvestStrategyClient.sol";
 
 /**
  * @title AaveV3InvestStrategy
