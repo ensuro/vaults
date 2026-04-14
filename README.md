@@ -29,7 +29,6 @@ execute in the context of the vault, managing the vault assets. Only trusted str
 The repositoy includes three MultiStrategyVault alternatives, all inheriting from MSVBase, difering on how they manage
 access control or other features:
 
-- **MultiStrategyERC4626**: uses OZ's AccessControl contract for managing the permissions.
 - **AccessManagedMSV**: this one is intented to be deployed behing an AccessManagedProxy, a modified ERC1967
   proxy that checks with an AccessManager (OZ 5.x) contract for each method called. The contract itself doesn't
   implement any access control policy.
@@ -51,6 +50,13 @@ The current implemented strategies are:
   has a 1:1 equivalence with the asset. Useful for yield bearing assets like USDM or Lido ETH.
 - **SwapStableAaveV3InvestStrategy**: it swaps the asset and invests it into AAVE. Useful for equivalent assets that
   have different returns on AAVE like Bridged USDC vs Native USDC.
+- **ERC4626InvestStrategy**: invest the funds received in an ERC4626-compliant vault. The `asset()` of the vault must
+  be the same as the one used by the MSV.
+- **MorphoVaultV2InvestStrategy**: strategy that invests in Morpho V2 vaults. These vaults are not fully ERC-4626
+  compatible. Uses cached `_totalAssets()` of the Morpho v2 vault, unless older than 1 day.
+- **MerklRewardsInvestStrategy**: strategy that collects the Merkl Rewards and accounts them. Later, rewards can be
+  swapped and reinjected into the MSV as liquidity. Doesn't support deposits. Uses Chainlink oracles.
+- **IdleInvestStrategy**: strategy that just keeps the funds liquid in `MSV.asset()` without generating any yield.
 
 **WARNING**: the underlying asset of each strategy should be different, and not overlap with other strategies'
 underlying assets, because this can produce double-counting in the totalAssets() method. Be careful of this when
