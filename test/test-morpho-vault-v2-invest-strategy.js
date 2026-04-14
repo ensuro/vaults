@@ -140,7 +140,7 @@ describe("MorphoVaultV2InvestStrategy contract tests", function () {
   it("Checks methods can't be called directly", async () => {
     const { strategy } = await helpers.loadFixture(setUpCommon);
 
-    await expect(strategy.connect(ethers.toUtf8Bytes(""))).to.be.revertedWithCustomError(
+    await expect(strategy.getFunction("connect")(ethers.toUtf8Bytes(""))).to.be.revertedWithCustomError(
       strategy,
       "CanBeCalledOnlyThroughDelegateCall"
     );
