@@ -98,15 +98,17 @@ describe("MorphoVaultV2InvestStrategy contract tests", function () {
     expect(await USDC.allowance(vault, investVault)).to.equal(0);
 
     await investVault.discreteEarning(_A(40));
-    expect(await strategy.totalAssets(vault)).to.closeTo(_A(100), MCENT);
 
+    // Profits not recorded until cached totalAssets updated
+    expect(await strategy.totalAssets(vault)).to.closeTo(_A(100), MCENT);
     await investVault.updateCachedTotalAssets();
     expect(await strategy.totalAssets(vault)).to.closeTo(_A(140), MCENT);
 
     await investVault.discreteEarning(-_A(50));
-    expect(await strategy.totalAssets(vault)).to.closeTo(_A(140), MCENT);
 
-    await investVault.updateCachedTotalAssets();
+    // Or... when cached totalAssets is too old
+    expect(await strategy.totalAssets(vault)).to.closeTo(_A(140), MCENT);
+    await helpers.time.increase(ONE_DAY_SECONDS + 1);
     expect(await strategy.totalAssets(vault)).to.closeTo(_A(90), MCENT);
   });
 
@@ -118,7 +120,6 @@ describe("MorphoVaultV2InvestStrategy contract tests", function () {
     await vault.connect(lp).withdraw(_A(80), lp, lp);
     expect(await strategy.totalAssets(vault)).to.closeTo(_A(20), MCENT);
 
-    await investVault.updateCachedTotalAssets();
     await investVault.discreteEarning(_A(40));
     expect(await strategy.totalAssets(vault)).to.closeTo(_A(20), MCENT);
 
@@ -241,7 +242,6 @@ describe("MorphoVaultV2InvestStrategy contract tests", function () {
     const { investVault, vault, strategy, lp } = await helpers.loadFixture(setUpCommon);
 
     await vault.connect(lp).deposit(_A(100), lp);
-    await investVault.updateCachedTotalAssets();
 
     const shares = await investVault.balanceOf(vault);
     const cachedTotalAssets = await investVault._totalAssets();
@@ -249,6 +249,7 @@ describe("MorphoVaultV2InvestStrategy contract tests", function () {
 
     const expectedFromCached = (cachedTotalAssets * shares) / totalSupply;
     const actualTotalAssets = await strategy.totalAssets(vault);
+    await investVault.discreteEarning(_A(1));
 
     expect(actualTotalAssets).to.equal(expectedFromCached);
   });
