@@ -7,7 +7,7 @@ import {IInvestStrategy} from "../interfaces/IInvestStrategy.sol";
 import {InvestStrategyClient} from "../InvestStrategyClient.sol";
 
 /**
- * @title AaveV3InvestStrategy
+ * @title ERC4626InvestStrategy
  *
  * @dev Strategy that invests/deinvests into a 4626 vault
  *
