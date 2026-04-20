@@ -39,6 +39,13 @@ jobs:
           cache: "npm"
           registry-url: 'https://registry.npmjs.org'
 
+      # Ensure npm 11.5.1 or later is installed
+      - name: Update npm
+        run: |
+          npm --version
+          npm install -g npm@10.9.8
+          npm install -g npm@latest
+
       - run: npm ci
 
       - id: semver
@@ -53,6 +60,7 @@ jobs:
       - run: scripts/make-npm-package.sh "${{ steps.semver.outputs.semver }}" ./build/npm-package
 
       - run: |
+          SEMVER="${{ steps.semver.outputs.semver }}"
           RELEASE_TAG="${{ github.event.inputs.tag }}"
           if [ -z "$RELEASE_TAG" ]; then
             if [[ "$SEMVER" == *"-beta"* ]]; then
