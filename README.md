@@ -65,6 +65,7 @@ adding a new strategy to an existing vault.
 ## Code Audits
 
 - Audit by [Quantstamp](https://quantstamp.com/) - 2025-02-24 through 2025-03-03: [AuditReport](audits/2025-03-Quantstamp-Final-Audit-Report.pdf)
+- Audit by AuditAgent - 2026-09-19: [Report](audits/2026-09-audit_agent_report_3_ad8b66d5-ddab-42bf-be03-9b6eeaae908e.pdf) ([findings response](audits/2026-09-audit_agent_report_3_findings.md))
 
 ## Contributing
 
